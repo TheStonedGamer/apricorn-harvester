@@ -126,6 +126,8 @@ public final class AddonSettings {
                             PlantConfig.getSpacing()));
                     case "plant.clearance" -> PlantConfig.setClearanceQuiet(parseInt(value,
                             PlantConfig.getClearance()));
+                    case "plant.rowTolerance" -> PlantConfig.setRowToleranceQuiet(parseInt(value,
+                            PlantConfig.getRowTolerance()));
                     case "plant.rowAxis" -> {
                         try {
                             PlantConfig.setRowAxisQuiet(PlantConfig.RowAxis.valueOf(value));
@@ -166,6 +168,7 @@ public final class AddonSettings {
         lines.add("bonemeal.max=" + bonemealMax);
         lines.add("plant.spacing=" + PlantConfig.getSpacing());
         lines.add("plant.clearance=" + PlantConfig.getClearance());
+        lines.add("plant.rowTolerance=" + PlantConfig.getRowTolerance());
         lines.add("plant.rowAxis=" + PlantConfig.getRowAxis().name());
         lines.add("plant.defaultType=" + PlantConfig.getDefaultType().name());
         try {

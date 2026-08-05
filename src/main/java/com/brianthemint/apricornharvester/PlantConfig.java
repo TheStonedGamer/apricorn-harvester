@@ -55,8 +55,18 @@ public final class PlantConfig {
     public static final int DEFAULT_CLEARANCE = 2;
     public static final int MAX_CLEARANCE = 8;
 
+    /**
+     * How far a plant may be nudged off its exact grid cell to find usable soil. Real farms are
+     * rarely perfectly square - a row bends round a pond, a bed is one block off, the ground is
+     * patchy - and with a tolerance of 0 every such cell is simply skipped. 1 is enough for a row
+     * that wobbles by a block; raise it for a properly wonky field.
+     */
+    public static final int DEFAULT_ROW_TOLERANCE = 1;
+    public static final int MAX_ROW_TOLERANCE = 4;
+
     private static int spacing = DEFAULT_SPACING;
     private static int clearance = DEFAULT_CLEARANCE;
+    private static int rowTolerance = DEFAULT_ROW_TOLERANCE;
     private static RowAxis rowAxis = RowAxis.EAST_WEST;
     private static ApricornType defaultType = ApricornType.BLACK;
     /**
@@ -102,6 +112,20 @@ public final class PlantConfig {
 
     static void setClearanceQuiet(int value) {
         clearance = Math.max(0, Math.min(MAX_CLEARANCE, value));
+    }
+
+    /** Blocks a plant may be nudged off its grid cell to find usable soil (0 = strict grid). */
+    public static int getRowTolerance() {
+        return rowTolerance;
+    }
+
+    public static void setRowTolerance(int value) {
+        setRowToleranceQuiet(value);
+        AddonSettings.notifyPlantSettingsChanged();
+    }
+
+    static void setRowToleranceQuiet(int value) {
+        rowTolerance = Math.max(0, Math.min(MAX_ROW_TOLERANCE, value));
     }
 
     public static RowAxis getRowAxis() {

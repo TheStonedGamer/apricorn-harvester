@@ -68,6 +68,24 @@ public class ApricornPlantCommand implements ICommand {
                 }
                 return;
             }
+            case "snap":
+            case "tolerance": {
+                if (!args.hasAny()) {
+                    logDirect("Row snap = " + PlantConfig.getRowTolerance()
+                            + " blocks (how far a plant may shift off the grid to find soil).");
+                    return;
+                }
+                try {
+                    PlantConfig.setRowTolerance(Integer.parseInt(args.getString()));
+                    int value = PlantConfig.getRowTolerance();
+                    logDirect("Row snap = " + value
+                            + (value == 0 ? " (strict grid: cells with no usable soil are skipped)."
+                                          : " (rows may wobble up to " + value + " block(s))."));
+                } catch (NumberFormatException e) {
+                    logDirect("Expected a number of blocks (0-" + PlantConfig.MAX_ROW_TOLERANCE + ").");
+                }
+                return;
+            }
             case "clearance":
             case "margin": {
                 if (!args.hasAny()) {
@@ -221,7 +239,7 @@ public class ApricornPlantCommand implements ICommand {
         if (args.hasExactlyOne()) {
             return new TabCompleteHelper()
                     .append("start", "stop", "pause", "resume", "gui", "spacing", "clearance",
-                            "rows", "type", "all", "row")
+                            "snap", "rows", "type", "all", "row")
                     .filterPrefix(args.peekString()).stream();
         }
         if (args.hasExactly(2)) {
@@ -266,6 +284,9 @@ public class ApricornPlantCommand implements ICommand {
                 "The grid keeps a clearance from walls and from the selection border (default",
                 "2 blocks, so the first plant sits on the 3rd block) and skips any spot with a",
                 "wall, fence or other tree inside that radius - the trees need room to grow.",
+                "Rows do not have to be perfectly straight: with snap 1 (the default) a plant",
+                "may shift a block off its grid cell to find usable soil, so a row that bends",
+                "round an obstacle or sits on patchy ground still comes out complete.",
                 "Nothing is ever broken: only free, plantable soil inside the selection is",
                 "used, and the bot plants from the path beside each spot.",
                 "",
@@ -276,6 +297,7 @@ public class ApricornPlantCommand implements ICommand {
                 "> #plant pause / resume   pause and continue in place",
                 "> #plant spacing 3        set the grid spacing in blocks",
                 "> #plant clearance 2      blocks kept free around a plant (walls, borders)",
+                "> #plant snap 1           how far a plant may shift off the grid to find soil",
                 "> #plant rows x           rows run east-west (numbered by z)",
                 "> #plant rows z           rows run north-south (numbered by x)",
                 "> #plant rows flip        swap the row direction",

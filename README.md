@@ -81,6 +81,11 @@ The grid keeps a **wall clearance** (default **2**, so the first plant sits on t
 a wall or the selection border), and any spot with a wall, fence, pillar or another tree inside that
 radius is skipped — the trees need room to grow.
 
+**Rows do not have to be perfectly straight.** With `snap 1` (the default) a plant may shift up to a
+block off its grid cell to find usable soil, so a row that bends round a pond, sits a block off, or
+runs over patchy ground still comes out complete instead of full of holes. Nudged plants still keep
+their clearance and a sensible gap from their neighbours. `#plant snap 0` restores a strict grid.
+
 Only free, plantable soil is used (grass, dirt, coarse/rooted dirt, podzol, mycelium, farmland, moss,
 mud). The bot plants from the path beside each spot; it never stands on the block it is planting.
 Apricorns are taken from the hotbar, or swapped in from the main inventory. When a colour runs out,
@@ -91,6 +96,7 @@ the rest of that colour's spots are skipped and reported.
 #plant gui                the planting screen (key K)
 #plant spacing 3          grid spacing in blocks (1-16)
 #plant clearance 2        blocks kept free from walls and the border (0-8)
+#plant snap 1             how far a plant may shift off the grid to find soil (0-4)
 #plant rows x|z|flip      which way the rows run
 #plant all red            set every row of this selection to one colour
 #plant row 2 blue         set one row's colour

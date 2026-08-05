@@ -176,16 +176,18 @@ public class ApricornConfigScreen extends Screen {
                 PlantConfig::setSpacing, "blocks"));
         widgets.add(new FlatUI.Stepper(x + w - 96, y + 28, 96, PlantConfig::getClearance,
                 PlantConfig::setClearance, "blocks"));
-        widgets.add(new FlatUI.Button(x + w - 150, y + 56, 150, 18,
+        widgets.add(new FlatUI.Stepper(x + w - 96, y + 56, 96, PlantConfig::getRowTolerance,
+                PlantConfig::setRowTolerance, "blocks"));
+        widgets.add(new FlatUI.Button(x + w - 150, y + 84, 150, 18,
                 () -> PlantConfig.getRowAxis().label(),
                 () -> PlantConfig.setRowAxis(PlantConfig.getRowAxis().other()), false));
 
-        FlatUI.Dropdown<ApricornType> colours = new FlatUI.Dropdown<>(x + w - 150, y + 84, 150,
+        FlatUI.Dropdown<ApricornType> colours = new FlatUI.Dropdown<>(x + w - 150, y + 110, 150,
                 Arrays.asList(ApricornPlanting.types()), PlantConfig.getDefaultType(),
                 ApricornPlanting::displayName, PlantConfig::setDefaultType);
         dropdowns.add(colours);
 
-        widgets.add(new FlatUI.Button(x, y + 116, 190, 20, () -> "Per-row colours...", () -> {
+        widgets.add(new FlatUI.Button(x, y + 140, 190, 20, () -> "Per-row colours...", () -> {
             if (context.plant() != null) {
                 this.minecraft.setScreen(new ApricornPlantScreen(context.baritone(), context.plant()));
             }
@@ -340,10 +342,11 @@ public class ApricornConfigScreen extends Screen {
             case PLANT -> {
                 FlatUI.label(g, "Grid spacing", x, y + 4);
                 FlatUI.label(g, "Wall clearance", x, y + 32);
-                FlatUI.label(g, "Row direction", x, y + 60);
-                FlatUI.label(g, "Default colour", x, y + 90);
-                note(g, x, y + 146, "Clearance keeps plants away from walls and the selection",
-                        "border, so the trees have room to grow.");
+                FlatUI.label(g, "Row snap", x, y + 60);
+                FlatUI.label(g, "Row direction", x, y + 88);
+                FlatUI.label(g, "Default colour", x, y + 116);
+                note(g, x, y + 166, "Snap lets a plant shift off its grid cell to find soil, so",
+                        "rows that are not perfectly straight still come out complete.");
             }
             case BONEMEAL -> {
                 FlatUI.label(g, "Bone meals per sapling", x, y + 4);

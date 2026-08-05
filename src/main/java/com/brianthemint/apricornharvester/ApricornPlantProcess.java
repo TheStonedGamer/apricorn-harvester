@@ -205,6 +205,7 @@ public class ApricornPlantProcess implements IBaritoneProcess {
         logDirect("Planting started in selection " + selMin + " -> " + selMax + ": "
                 + targets.size() + " spots, spacing " + PlantConfig.getSpacing()
                 + ", clearance " + PlantConfig.getClearance()
+                + ", snap " + PlantConfig.getRowTolerance()
                 + ", rows " + PlantConfig.getRowAxis().label() + ".");
     }
 
@@ -218,6 +219,7 @@ public class ApricornPlantProcess implements IBaritoneProcess {
         boolean eastWest = PlantConfig.getRowAxis() == PlantConfig.RowAxis.EAST_WEST;
         List<Integer> rows = PlantConfig.rowsOf(selMin, selMax);
         List<Integer> cols = PlantConfig.columnsOf(selMin, selMax);
+        List<BlockPos> chosen = new ArrayList<>();
         boolean reverse = false;
         for (int rowCoord : rows) {
             ApricornType type = PlantConfig.getRowType(rowCoord);
@@ -225,13 +227,70 @@ public class ApricornPlantProcess implements IBaritoneProcess {
                 int alongRow = cols.get(reverse ? cols.size() - 1 - i : i);
                 int x = eastWest ? alongRow : rowCoord;
                 int z = eastWest ? rowCoord : alongRow;
-                BlockPos soil = plantableSoil(x, z);
-                if (soil != null && hasGrowingRoom(soil)) {
+                BlockPos soil = findSpotNear(x, z, chosen);
+                if (soil != null) {
                     targets.add(new Target(soil, type));
+                    chosen.add(soil);
                 }
             }
             reverse = !reverse;
         }
+    }
+
+    /**
+     * The usable planting spot closest to grid cell (x, z), searched within
+     * {@link PlantConfig#getRowTolerance()} blocks of it.
+     *
+     * <p>A perfectly square field never needs this - the cell itself is used. It matters on real
+     * farms, where a row bends round an obstacle, a bed sits a block off, or the soil is patchy:
+     * with a strict grid every such cell is skipped and the row comes out full of holes. The
+     * nudged spot still has to be plantable soil with the configured clearance, and must keep a
+     * sensible gap from the spots already picked so nudging cannot bunch two trees together.
+     *
+     * @param chosen spots already planned for this run, used for the spacing check
+     */
+    private BlockPos findSpotNear(int x, int z, List<BlockPos> chosen) {
+        int tolerance = PlantConfig.getRowTolerance();
+        BlockPos best = null;
+        int bestDistance = Integer.MAX_VALUE;
+        for (int dx = -tolerance; dx <= tolerance; dx++) {
+            for (int dz = -tolerance; dz <= tolerance; dz++) {
+                int distance = Math.abs(dx) + Math.abs(dz);
+                if (distance >= bestDistance) {
+                    continue;
+                }
+                int cx = x + dx;
+                int cz = z + dz;
+                if (cx < selMin.getX() || cx > selMax.getX()
+                        || cz < selMin.getZ() || cz > selMax.getZ()) {
+                    continue;
+                }
+                BlockPos soil = plantableSoil(cx, cz);
+                if (soil == null || !hasGrowingRoom(soil) || tooCloseToChosen(soil, chosen)) {
+                    continue;
+                }
+                best = soil;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * True when the candidate would sit closer to an already-planned spot than the grid allows.
+     * The gap shrinks with the tolerance (a wobbly row is allowed to be a little tighter), but
+     * never below one clear block between two plants.
+     */
+    private boolean tooCloseToChosen(BlockPos candidate, List<BlockPos> chosen) {
+        int minGap = Math.max(2, PlantConfig.getSpacing() - PlantConfig.getRowTolerance());
+        for (BlockPos other : chosen) {
+            int dx = Math.abs(other.getX() - candidate.getX());
+            int dz = Math.abs(other.getZ() - candidate.getZ());
+            if (Math.max(dx, dz) < minGap) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
