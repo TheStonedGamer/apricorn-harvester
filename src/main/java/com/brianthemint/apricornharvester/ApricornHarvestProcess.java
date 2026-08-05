@@ -232,6 +232,14 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
      * the inventory fills for the rest of the run.
      */
     private boolean depositUnavailable;
+    /** Containers that turned out to be full during this run, so they are not tried again. */
+    private final Set<BlockPos> triedContainers = new HashSet<>();
+    /** Apricorns carried at the previous deposit tick, to tell a real transfer from a dud click. */
+    private int depositLastCount = -1;
+    /** Consecutive deposit clicks that moved nothing - the sign of a full container. */
+    private int depositNoProgress;
+    /** Dud clicks tolerated before a container is written off as full. */
+    private static final int DEPOSIT_STALL_CLICKS = 3;
 
     private boolean harvestedAtThisStop;
     private int noProgressTicks;
@@ -344,6 +352,9 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         this.depositTicks = 0;
         this.midRunDeposit = false;
         this.depositUnavailable = false;
+        this.triedContainers.clear();
+        this.depositLastCount = -1;
+        this.depositNoProgress = 0;
         // The bot must never break apricorn leaves/logs: disable breaking for the whole run
         // (settings are read live by the pathfinder, so every path respects it).
         this.previousAllowBreak = BaritoneAPI.getSettings().allowBreak.value;
@@ -1084,7 +1095,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                                 y <= Math.max(selMax.getY(), ctx.player().blockPosition().getY()) + 8; y++) {
                             BlockPos pos = new BlockPos(x, y, z);
                             BlockState state = ctx.world().getBlockState(pos);
-                            if (!ApricornBlocks.isContainer(state)) {
+                            if (!ApricornBlocks.isContainer(state) || triedContainers.contains(pos)) {
                                 continue;
                             }
                             int emptySlots = countEmptyContainerSlots(pos);
@@ -1102,12 +1113,15 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                 }
 
                 if (bestPos == null) {
-                    logDirect("No container with free space within " + scanRange
-                            + " blocks (raise it with #apricorn chestradius <n>).");
+                    logDirect("No container with free space within " + scanRange + " blocks"
+                            + (triedContainers.isEmpty() ? "" : " (" + triedContainers.size() + " full)")
+                            + " - raise it with #apricorn chestradius <n>.");
                     return endDeposit("Apricorn harvesting complete (no deposit target).", true);
                 }
 
                 depositChestPos = bestPos;
+                depositNoProgress = 0;
+                depositLastCount = -1;
                 logDirect("Walking to container at " + bestPos + " (" + bestEmptySlots + " empty slots)...");
                 depositPhase = DepositPhase.WALK;
                 depositTicks = 0;
@@ -1183,22 +1197,38 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                 if (playerInvStart < 0) {
                     playerInvStart = 0;
                 }
-                boolean depositedAny = false;
+
+                // A shift-click into a full container silently does nothing, so progress is judged
+                // by the apricorns actually leaving the inventory - not by having clicked.
+                int carrying = ApricornBlocks.countApricorns(ctx.player().getInventory());
+                if (carrying < depositLastCount) {
+                    depositNoProgress = 0;
+                } else if (depositLastCount >= 0) {
+                    depositNoProgress++;
+                }
+                depositLastCount = carrying;
+
+                if (depositNoProgress > DEPOSIT_STALL_CLICKS) {
+                    logDirect("Container at " + depositChestPos + " is full - looking for another.");
+                    triedContainers.add(depositChestPos);
+                    closeScreenOnly();
+                    depositPhase = DepositPhase.SCAN;
+                    depositTicks = 0;
+                    depositNoProgress = 0;
+                    depositLastCount = -1;
+                    return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
+                }
+
                 for (int i = playerInvStart; i < menu.slots.size(); i++) {
                     Slot slot = menu.getSlot(i);
                     if (!slot.hasItem()) continue;
                     ItemStack stack = slot.getItem();
                     if (!ApricornBlocks.isApricornItem(stack)) continue;
 
-                    int slotIndex = i;
                     Minecraft.getInstance().gameMode.handleInventoryMouseClick(
-                            menu.containerId, slotIndex, 0, ClickType.QUICK_MOVE, ctx.player());
-                    depositedAny = true;
+                            menu.containerId, i, 0, ClickType.QUICK_MOVE, ctx.player());
                     // Wait for the server to process before the next click
                     depositTicks = 0;
-                    return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
-                }
-                if (depositedAny) {
                     return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
                 }
                 // No apricorns left in inventory — close the screen
@@ -1237,6 +1267,8 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         depositPhase = DepositPhase.IDLE;
         depositChestPos = null;
         depositTicks = 0;
+        depositNoProgress = 0;
+        depositLastCount = -1;
         currentGoalStand = null;
         if (failed) {
             depositUnavailable = true;
@@ -1254,6 +1286,12 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         depositPhase = DepositPhase.DONE;
         finish(finalMessage);
         return null;
+    }
+
+    /** Closes the container screen without ending the deposit, for moving to the next chest. */
+    private void closeScreenOnly() {
+        Minecraft.getInstance().screen = null;
+        ctx.player().closeContainer();
     }
 
     /** Free slots in the player's main inventory and hotbar. */

@@ -83,8 +83,9 @@ walked to or clicked, so the run only visits trees it actually wants.
 
 With `deposit true` the bot does not wait for the end of the run: **as soon as the inventory fills
 up it breaks off, empties into the nearest container with free space, and resumes the sweep where it
-left off**. If no container can be found or reached, or the one it finds has no room, it says so once
-and carries on without depositing rather than shuttling to the same dead end every time.
+left off**. If that container fills mid-deposit it moves on to the next one in range, remembering
+which are full so it does not go back. Only when nothing in range has room does it say so once and
+carry on without depositing.
 
 Baritone's own `#pause` / `#resume` also freeze and continue a run.
 
