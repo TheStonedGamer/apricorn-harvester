@@ -129,6 +129,12 @@ The way up is **built at the farm's edge and taken back down afterwards**: never
 and every block it places is remembered, so the teardown removes exactly those and collects the dirt
 on the way down. The spot is saved in the farm map, so later runs scaffold in the same corner.
 
+**It remembers where it has been.** Each stop is worked once and then struck off for the rest of the
+pass, so a deposit trip, a chase after a dropped apricorn or a re-plan cannot put the bot back at a
+bush it has already picked. When the sweep runs out of stops it starts a fresh pass — the field has
+had a whole sweep's worth of time to ripen by then — and reports `Pass 2: 34 more stop(s) with ripe
+apricorns.`
+
 `#apricorn canopy false` switches to the old behaviour: the bot works only from the paths, and the
 apricorn leaves go into Baritone's `blocksToAvoid` so it never steps on a bush. That reaches less,
 but touches nothing. Planting and bone-mealing always work this way.

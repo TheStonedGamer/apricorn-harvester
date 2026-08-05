@@ -148,6 +148,15 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
     private int standIndex;
     /** Stands Baritone could not reach at all. Those stay skipped for the whole run. */
     private final Set<BlockPos> unreachableStands = new HashSet<>();
+    /**
+     * Stands already worked this pass. The sweep visits each one once and does not come back to a
+     * bush it has already picked - a deposit trip, a chase after a drop or a re-plan can otherwise
+     * drop the bot back where it started and have it walk the same row again. Cleared when a new
+     * pass begins, because by then the field has had time to ripen.
+     */
+    private final Set<BlockPos> visitedStands = new HashSet<>();
+    /** Which pass over the farm this is, for the chat lines. */
+    private int passNumber = 1;
     private boolean patrolDone;
     /**
      * True once the selection has been re-scanned after the first pass. The bush list is built at
@@ -347,6 +356,8 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         this.harvestStands.clear();
         this.standIndex = 0;
         this.unreachableStands.clear();
+        this.visitedStands.clear();
+        this.passNumber = 1;
         this.rescanned = false;
         this.patrolDone = false;
         this.pickingUp = false;
@@ -610,7 +621,8 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
             }
 
             BlockPos stand = harvestStands.get(standIndex);
-            if (unreachableStands.contains(stand) || !standHasWork(stand)) {
+            if (unreachableStands.contains(stand) || visitedStands.contains(stand)
+                    || !standHasWork(stand)) {
                 nextStand();
                 continue;
             }
@@ -705,8 +717,11 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                 && pos.getY() >= selMin.getY() - STAND_SEARCH_DEPTH && pos.getY() <= selMax.getY() + 2;
     }
 
-    /** Moves to the next stand of the sweep. */
+    /** Moves to the next stand of the sweep, remembering that this one is done for this pass. */
     private void nextStand() {
+        if (standIndex < harvestStands.size()) {
+            visitedStands.add(harvestStands.get(standIndex));
+        }
         standIndex++;
         currentGoalStand = null;
     }
@@ -816,6 +831,10 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
             return reverse ? Integer.compare(b.getX(), a.getX()) : Integer.compare(a.getX(), b.getX());
         });
         for (BlockPos stand : stands) {
+            // Already picked this pass, or nothing there worth the walk.
+            if (visitedStands.contains(stand) || unreachableStands.contains(stand)) {
+                continue;
+            }
             if (standHasWork(stand)) {
                 harvestStands.add(stand);
             }
@@ -833,11 +852,16 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
     private boolean rescanForMissedApricorns() {
         rescanned = true;
         currentGoalStand = null;
+        // A new pass: the field has had a whole sweep's worth of time to ripen, so every stand is
+        // worth looking at again.
+        visitedStands.clear();
+        passNumber++;
         buildSweep();
         if (harvestStands.isEmpty()) {
             return false;
         }
-        logDirect("Re-scan found " + harvestStands.size() + " more stop(s) with ripe apricorns.");
+        logDirect("Pass " + passNumber + ": " + harvestStands.size()
+                + " more stop(s) with ripe apricorns.");
         return true;
     }
 
