@@ -186,10 +186,12 @@ public class ApricornGui extends Screen {
             String name = names.get(farmScroll + i);
             FarmMap farm = FarmMap.load(name);
             boolean isSelected = name.equalsIgnoreCase(selected);
-            String label = farm == null || !farm.isMapped()
+            int rowW = w - (maxScroll > 0 ? 26 : 0);
+            String label = fit(farm == null || !farm.isMapped()
                     ? name + "  (not mapped)"
-                    : name + "   " + farm.stands.size() + " stands, " + farm.trees.size() + " trees";
-            widgets.add(new FlatUI.Button(x, y + i * 22, w - (maxScroll > 0 ? 26 : 0), 20,
+                    : name + "   " + farm.stands.size() + " stands, " + farm.trees.size() + " trees",
+                    rowW - 12);
+            widgets.add(new FlatUI.Button(x, y + i * 22, rowW, 20,
                     () -> label,
                     () -> {
                         FarmSelection.select(name);
@@ -209,7 +211,7 @@ public class ApricornGui extends Screen {
             }, false));
         }
 
-        int actionY = y + Math.max(shown, 1) * 22 + 10;
+        int actionY = farmActionY(y);
         widgets.add(new FlatUI.Button(x, actionY, 120, 20,
                 () -> mapperRunning() ? "Mapping..." : "Map selection", this::startMapping, true));
         widgets.add(new FlatUI.Button(x + 128, actionY, 90, 20, () -> "Re-map", () -> {
@@ -227,7 +229,7 @@ public class ApricornGui extends Screen {
 
         // Deleting the selected farm's map. Two clicks: the first arms it, so a stray click on a
         // survey that took ten minutes to walk does not throw it away.
-        widgets.add(new FlatUI.Button(x, actionY + 26, 150, 20,
+        widgets.add(new FlatUI.Button(x, farmDeleteY(y), 150, 20,
                 () -> confirmDeleteFarm == null ? "Delete map" : "Delete '" + confirmDeleteFarm + "'?",
                 () -> {
                     String name = FarmSelection.currentName();
@@ -247,11 +249,31 @@ public class ApricornGui extends Screen {
                     rebuildWidgets();
                 }, false));
         if (confirmDeleteFarm != null) {
-            widgets.add(new FlatUI.Button(x + 158, actionY + 26, 80, 20, () -> "Keep it", () -> {
+            widgets.add(new FlatUI.Button(x + 158, farmDeleteY(y), 80, 20, () -> "Keep it", () -> {
                 confirmDeleteFarm = null;
                 rebuildWidgets();
             }, false));
         }
+    }
+
+    /**
+     * Vertical layout of the Farms tab, shared by the widgets and the text so the two cannot drift
+     * apart: the farm list, then the map buttons, then delete, then the summary and the note.
+     */
+    private int farmListRows() {
+        return Math.max(1, Math.min(FARM_ROWS_VISIBLE, FarmMap.names().size()));
+    }
+
+    private int farmActionY(int y) {
+        return y + farmListRows() * 22 + 10;
+    }
+
+    private int farmDeleteY(int y) {
+        return farmActionY(y) + 26;
+    }
+
+    private int farmSummaryY(int y) {
+        return farmDeleteY(y) + 30;
     }
 
     private boolean mapperRunning() {
@@ -876,24 +898,30 @@ public class ApricornGui extends Screen {
                 int count = FarmMap.names().size();
                 FlatUI.label(g, count == 0 ? "No farms yet" : count + " farm(s) - click one to work on it",
                         x, y - 10);
-                int belowList = y + Math.max(Math.min(FARM_ROWS_VISIBLE, count), 1) * 22 + 38;
+                int infoY = farmSummaryY(y);
                 FarmMap farm = FarmSelection.current();
                 if (mapperRunning()) {
-                    g.drawString(this.font, context.mapper().status(), x, belowList,
-                            FlatUI.ACCENT, false);
+                    g.drawString(this.font, context.mapper().status(), x, infoY, FlatUI.ACCENT, false);
                 } else if (farm == null) {
                     g.drawString(this.font, count == 0
                                     ? "Select an area with #sel pos1 / pos2, then Map selection."
                                     : "No farm selected.",
-                            x, belowList, FlatUI.TEXT_DIM, false);
+                            x, infoY, FlatUI.TEXT_DIM, false);
+                } else if (!farm.isMapped()) {
+                    g.drawString(this.font, farm.name + " has not been mapped yet.", x, infoY,
+                            FlatUI.BAD, false);
                 } else {
-                    g.drawString(this.font, farm.summary(), x, belowList,
-                            farm.isMapped() ? FlatUI.TEXT : FlatUI.BAD, false);
-                    g.drawString(this.font, "bounds " + farm.min.getX() + "," + farm.min.getZ()
-                            + " -> " + farm.max.getX() + "," + farm.max.getZ(),
-                            x, belowList + 12, FlatUI.TEXT_DIM, false);
+                    // Split rather than one long line: the summary easily runs past the panel.
+                    g.drawString(this.font, fit(farm.stands.size() + " stands, " + farm.trees.size()
+                            + " tree blocks, " + farm.containers.size() + " containers", w),
+                            x, infoY, FlatUI.TEXT, false);
+                    g.drawString(this.font, fit(colourCounts(farm), w), x, infoY + 11,
+                            FlatUI.TEXT_DIM, false);
+                    g.drawString(this.font, fit("bounds " + farm.min.getX() + "," + farm.min.getZ()
+                            + " -> " + farm.max.getX() + "," + farm.max.getZ(), w),
+                            x, infoY + 22, FlatUI.TEXT_DIM, false);
                 }
-                note(g, x, belowList + 30,
+                note(g, x, infoY + 40,
                         "Mapping walks the farm once so every chunk loads, recording the",
                         "paths, trees, colours and containers. Harvesting then plans over",
                         "the whole field instead of only the part you can see.");
@@ -1016,6 +1044,23 @@ public class ApricornGui extends Screen {
             g.drawString(this.font, step.describe(), x + 8, y + 8 + line * 12, FlatUI.TEXT, false);
             line++;
         }
+    }
+
+    /** Trims text to the content width, so nothing runs off the panel. */
+    private String fit(String text, int width) {
+        return this.font.width(text) <= width ? text : this.font.plainSubstrByWidth(text, width - 6) + "...";
+    }
+
+    /** "Black 1854, Blue 18, Yellow 2127" for a mapped farm. */
+    private static String colourCounts(FarmMap farm) {
+        StringBuilder sb = new StringBuilder();
+        for (var entry : farm.colours.entrySet()) {
+            if (sb.length() > 0) {
+                sb.append(", ");
+            }
+            sb.append(ApricornPlanting.displayName(entry.getKey())).append(" ").append(entry.getValue());
+        }
+        return sb.length() == 0 ? "no apricorn trees recorded" : sb.toString();
     }
 
     private void note(GuiGraphics g, int x, int y, String... lines) {
