@@ -183,6 +183,8 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
     private final List<BlockPos> climbStands = new ArrayList<>();
     /** The value of Baritone's allowBreak setting before this run, so it can be restored. */
     private boolean previousAllowBreak;
+    /** Leaf blocks this run added to Baritone's blocksToAvoid, so only those are removed after. */
+    private final List<Block> canopyBlocksAdded = new ArrayList<>();
 
     private final Set<BlockPos> clickQueue = new LinkedHashSet<>();
     private final Map<BlockPos, Integer> clickAttempts = new HashMap<>();
@@ -359,6 +361,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         // (settings are read live by the pathfinder, so every path respects it).
         this.previousAllowBreak = BaritoneAPI.getSettings().allowBreak.value;
         BaritoneAPI.getSettings().allowBreak.value = false;
+        avoidCanopy(true);
         // Precalculate path stands. A mapped farm contributes the stands it recorded while walking
         // the field, so parts of the farm that are not loaded right now are still planned for -
         // the client reads unloaded chunks as air, which is what used to make a big farm stop at
@@ -424,6 +427,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         climbStands.clear();
         pathStands.clear();
         BaritoneAPI.getSettings().allowBreak.value = previousAllowBreak;
+        avoidCanopy(false);
         logDirect("Apricorn harvesting stopped.");
     }
 
@@ -1012,11 +1016,16 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         }
         BlockPos itemPos = item.blockPosition();
         BlockPos stand = pathStand(itemPos.getX(), itemPos.getZ());
-        if (stand == null) {
-            // Lying in a tree column the bot may not walk into.
-            skippedItems.add(item.getId());
-            return null;
+        boolean onCanopy = false;
+        if (stand == null || item.getY() > stand.getY() + 2.5) {
+            // The drop is sitting on top of a bush. There is no path stand that can reach it, so
+            // the only options are to climb up legitimately - a slope, a wall, stairs, whatever the
+            // farm happens to have - or to leave it. Nothing is ever broken or placed to get there.
+            stand = itemPos;
+            onCanopy = true;
         }
+        // Crossing the canopy is allowed while fetching a drop that is on it, and only then.
+        avoidCanopy(!onCanopy);
         trackGoal(stand);
         if (arrivedAt(stand)) {
             // Standing on it: vanilla pickup takes over. If the item is still there after a
@@ -1025,14 +1034,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                 logDirect("Could not pick up the apricorn at " + itemPos + " (inventory full?), skipping.");
                 skippedItems.add(item.getId());
                 pickupWait = 0;
-                return null;
-            }
-            // If the item is far above the stand (e.g. on top of leaves in a tree column),
-            // jumping will never reach it — skip it immediately.
-            if (item.getY() > stand.getY() + 2.5) {
-                logDebug("Item at " + itemPos + " is too high above stand " + stand + ", skipping.");
-                skippedItems.add(item.getId());
-                pickupWait = 0;
+                avoidCanopy(true);
                 return null;
             }
             // Keep jumping under items that are above ground (e.g. on top of leaves or slabs),
@@ -1043,8 +1045,11 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
             return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
         if (calcFailed || goalUnreachable(stand) || stuck(stand)) {
-            logDirect("Cannot reach the apricorn at " + itemPos + ", skipping.");
+            logDirect(onCanopy
+                    ? "No way up to the apricorn on top of the bush at " + itemPos + " - leaving it."
+                    : "Cannot reach the apricorn at " + itemPos + ", skipping.");
             skippedItems.add(item.getId());
+            avoidCanopy(true);
             return null;
         }
         return new PathingCommand(new GoalBlock(stand), PathingCommandType.SET_GOAL_AND_PATH);
@@ -1338,6 +1343,29 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         depositPhase = DepositPhase.DONE;
         finish(finalMessage);
         return null;
+    }
+
+    /**
+     * Keeps the bot off the bushes.
+     *
+     * <p>Every goal the run sets is a path stand, but the pathfinder is free to route between them
+     * however it likes - and leaf blocks are solid, so walking over a canopy is a perfectly good
+     * path as far as Baritone is concerned. Adding the apricorn leaves to {@code blocksToAvoid}
+     * makes the pathfinder refuse to route through or onto them, so the bot stays on the farm's
+     * paths.
+     *
+     * <p>The one time this is lifted is fetching a drop that has landed on top of a bush: there is
+     * no other way to reach it, and the bot still may not break or place a block to get up, so it
+     * either finds a legitimate way onto the canopy or gives the drop up.
+     *
+     * @param avoid true to keep off the canopy, false to allow crossing it
+     */
+    private void avoidCanopy(boolean avoid) {
+        if (avoid) {
+            CanopyAvoidance.avoid(canopyBlocksAdded);
+        } else {
+            CanopyAvoidance.release(canopyBlocksAdded);
+        }
     }
 
     /** Closes the container screen without ending the deposit, for moving to the next chest. */
@@ -1685,6 +1713,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         climbStands.clear();
         pathStands.clear();
         BaritoneAPI.getSettings().allowBreak.value = previousAllowBreak;
+        avoidCanopy(false);
         // IMPORTANT: do NOT call baritone.getPathingBehavior().cancelEverything() here.
         // finish() runs inside PathingControlManager.executeProcesses(), which is iterating
         // its 'active' ArrayList; cancelEverything() clears that list and the JDK ArrayList
@@ -1708,6 +1737,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
             climbStands.clear();
             pathStands.clear();
             BaritoneAPI.getSettings().allowBreak.value = previousAllowBreak;
+            avoidCanopy(false);
             logDirect("Apricorn harvesting stopped (another Baritone action took over).");
         }
     }

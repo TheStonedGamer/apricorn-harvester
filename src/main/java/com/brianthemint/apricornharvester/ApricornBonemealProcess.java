@@ -98,6 +98,8 @@ public class ApricornBonemealProcess implements IBaritoneProcess {
     private Vec3 lastPlayerPos = Vec3.ZERO;
 
     private boolean previousAllowBreak;
+    /** Leaf blocks this run added to Baritone's blocksToAvoid, so only those are removed after. */
+    private final List<net.minecraft.world.level.block.Block> canopyBlocksAdded = new ArrayList<>();
     private int previousSlot = -1;
 
     public ApricornBonemealProcess(IBaritone baritone) {
@@ -167,6 +169,8 @@ public class ApricornBonemealProcess implements IBaritoneProcess {
 
         previousAllowBreak = BaritoneAPI.getSettings().allowBreak.value;
         BaritoneAPI.getSettings().allowBreak.value = false;
+        // Bone-meal from the paths, never from on top of a bush.
+        CanopyAvoidance.avoid(canopyBlocksAdded);
 
         for (int x = selMin.getX(); x <= selMax.getX(); x++) {
             for (int z = selMin.getZ(); z <= selMax.getZ(); z++) {
@@ -181,6 +185,7 @@ public class ApricornBonemealProcess implements IBaritoneProcess {
 
         if (saplings.isEmpty()) {
             BaritoneAPI.getSettings().allowBreak.value = previousAllowBreak;
+        CanopyAvoidance.release(canopyBlocksAdded);
             logDirect("No apricorn saplings in the selection.");
             return;
         }
@@ -616,6 +621,7 @@ public class ApricornBonemealProcess implements IBaritoneProcess {
         pathStands.clear();
         skippedStands.clear();
         BaritoneAPI.getSettings().allowBreak.value = previousAllowBreak;
+        CanopyAvoidance.release(canopyBlocksAdded);
         if (previousSlot >= 0 && previousSlot < 9 && ctx.player() != null) {
             ctx.player().getInventory().selected = previousSlot;
             ctx.playerController().syncHeldItem();

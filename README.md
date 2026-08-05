@@ -93,6 +93,15 @@ before moving on. Apricorns no path can reach are left standing.
 This suits the usual layout of 3×3×3 bushes with 1-wide paths between them, where a single stop
 touches up to four bushes: each stand is visited once instead of once per neighbouring bush.
 
+**It stays on the paths.** Leaf blocks are solid, so Baritone would happily route over a canopy to
+save a few steps; the apricorn leaves are added to its `blocksToAvoid` for the length of every run,
+so the pathfinder refuses to walk through or onto them. Planting and bone-mealing do the same.
+
+The one exception is a drop that has landed **on top** of a bush. There the canopy is unavoidable, so
+the bot is allowed to cross it for that one errand — but it still may not break or place a single
+block to get up there. It either finds a legitimate way (a slope, a wall, whatever your farm has) or
+reports `No way up to the apricorn on top of the bush at …` and leaves it.
+
 **Colour filter.** By default every colour is picked. Pick one, a set, or all — handy for topping up
 a single colour without stripping the farm. Set it on the Harvest tab of the window (a
 button per colour, plus All and Invert) or in chat. Colours the filter excludes are never clustered,
