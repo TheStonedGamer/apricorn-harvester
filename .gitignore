@@ -1,0 +1,43 @@
+# eclipse
+bin
+*.launch
+.settings
+.metadata
+.classpath
+.project
+
+# idea
+out
+*.ipr
+*.iws
+*.iml
+.idea
+
+# gradle
+build
+.gradle
+
+# other
+eclipse
+run
+runs
+run-data
+
+repo
+
+# third-party jars: Pixelmon and Baritone are not ours to redistribute.
+# See the README for where to download them into libs/.
+libs/*.jar
+
+# build output copied by build-jar.ps1
+dist
+
+# logs
+*.log
+
+# editors
+.vscode
+.eclipse
+
+# extracted Baritone classes used while looking up API signatures
+/baritone
