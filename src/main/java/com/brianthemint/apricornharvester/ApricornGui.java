@@ -36,6 +36,7 @@ public class ApricornGui extends Screen {
     private static final int TAB_H = 20;
     private static final int ROW_H = 22;
     private static final int ROWS_VISIBLE = 7;
+    private static final int FARM_ROWS_VISIBLE = 6;
 
     /** The tabs, in sidebar order. */
     public enum Tab {
@@ -72,6 +73,7 @@ public class ApricornGui extends Screen {
 
     // per-tab state that belongs to the window rather than to a saved setting
     private int rowScroll;
+    private int farmScroll;
     private int oreIndex;
     private int oreAmount = 32;
     private int huntHops = 10;
@@ -163,27 +165,52 @@ public class ApricornGui extends Screen {
     // -- farms
 
     private void initFarms(int x, int y, int w) {
-        List<String> farms = FarmMap.names();
+        // The farms themselves, one clickable row each: the list is the point of this tab, so it
+        // is shown outright rather than hidden behind a dropdown.
+        List<String> names = FarmMap.names();
+        int maxScroll = Math.max(0, names.size() - FARM_ROWS_VISIBLE);
+        farmScroll = Math.max(0, Math.min(farmScroll, maxScroll));
+        int shown = Math.min(FARM_ROWS_VISIBLE, names.size());
         String selected = FarmSelection.currentName();
-        if (!farms.isEmpty()) {
-            dropdowns.add(new FlatUI.Dropdown<>(x + w - 170, y, 170, farms,
-                    farms.contains(selected) ? selected : farms.get(0), name -> name,
-                    name -> {
+
+        for (int i = 0; i < shown; i++) {
+            String name = names.get(farmScroll + i);
+            FarmMap farm = FarmMap.load(name);
+            boolean isSelected = name.equalsIgnoreCase(selected);
+            String label = farm == null || !farm.isMapped()
+                    ? name + "  (not mapped)"
+                    : name + "   " + farm.stands.size() + " stands, " + farm.trees.size() + " trees";
+            widgets.add(new FlatUI.Button(x, y + i * 22, w - (maxScroll > 0 ? 26 : 0), 20,
+                    () -> label,
+                    () -> {
                         FarmSelection.select(name);
                         FarmSelection.applyToBaritone(context.baritone());
+                        Helper.HELPER.logDirect("Working on farm '" + name + "'.");
                         rebuildWidgets();
-                    }));
+                    }, isSelected));
         }
-        widgets.add(new FlatUI.Button(x, y + 34, 120, 20,
+        if (maxScroll > 0) {
+            widgets.add(new FlatUI.Button(x + w - 22, y, 22, 20, () -> "^", () -> {
+                farmScroll = Math.max(0, farmScroll - FARM_ROWS_VISIBLE);
+                rebuildWidgets();
+            }, false));
+            widgets.add(new FlatUI.Button(x + w - 22, y + (shown - 1) * 22, 22, 20, () -> "v", () -> {
+                farmScroll = Math.min(maxScroll, farmScroll + FARM_ROWS_VISIBLE);
+                rebuildWidgets();
+            }, false));
+        }
+
+        int actionY = y + Math.max(shown, 1) * 22 + 10;
+        widgets.add(new FlatUI.Button(x, actionY, 120, 20,
                 () -> mapperRunning() ? "Mapping..." : "Map selection", this::startMapping, true));
-        widgets.add(new FlatUI.Button(x + 128, y + 34, 90, 20, () -> "Re-map", () -> {
+        widgets.add(new FlatUI.Button(x + 128, actionY, 90, 20, () -> "Re-map", () -> {
             FarmMap farm = FarmSelection.current();
             if (farm != null && !mapperRunning()) {
                 onClose();
                 context.mapper().start(farm.name, farm.min, farm.max);
             }
         }, false));
-        widgets.add(new FlatUI.Button(x + 226, y + 34, 64, 20, () -> "Cancel", () -> {
+        widgets.add(new FlatUI.Button(x + 226, actionY, 64, 20, () -> "Cancel", () -> {
             if (mapperRunning()) {
                 context.mapper().stop();
             }
@@ -602,6 +629,15 @@ public class ApricornGui extends Screen {
                 return true;
             }
         }
+        if (lastTab == Tab.FARMS) {
+            int max = Math.max(0, FarmMap.names().size() - FARM_ROWS_VISIBLE);
+            int next = (int) Math.max(0, Math.min(max, farmScroll - Math.signum(scrollY)));
+            if (next != farmScroll) {
+                farmScroll = next;
+                rebuildWidgets();
+                return true;
+            }
+        }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
@@ -684,20 +720,27 @@ public class ApricornGui extends Screen {
         int w = contentW();
         switch (lastTab) {
             case FARMS -> {
-                FlatUI.label(g, "Farm", x, y + 6);
+                int count = FarmMap.names().size();
+                FlatUI.label(g, count == 0 ? "No farms yet" : count + " farm(s) - click one to work on it",
+                        x, y - 10);
+                int belowList = y + Math.max(Math.min(FARM_ROWS_VISIBLE, count), 1) * 22 + 38;
                 FarmMap farm = FarmSelection.current();
                 if (mapperRunning()) {
-                    g.drawString(this.font, context.mapper().status(), x, y + 66, FlatUI.ACCENT, false);
+                    g.drawString(this.font, context.mapper().status(), x, belowList,
+                            FlatUI.ACCENT, false);
                 } else if (farm == null) {
-                    g.drawString(this.font, "No farm selected.", x, y + 66, FlatUI.TEXT_DIM, false);
+                    g.drawString(this.font, count == 0
+                                    ? "Select an area with #sel pos1 / pos2, then Map selection."
+                                    : "No farm selected.",
+                            x, belowList, FlatUI.TEXT_DIM, false);
                 } else {
-                    g.drawString(this.font, farm.summary(), x, y + 66,
+                    g.drawString(this.font, farm.summary(), x, belowList,
                             farm.isMapped() ? FlatUI.TEXT : FlatUI.BAD, false);
                     g.drawString(this.font, "bounds " + farm.min.getX() + "," + farm.min.getZ()
                             + " -> " + farm.max.getX() + "," + farm.max.getZ(),
-                            x, y + 78, FlatUI.TEXT_DIM, false);
+                            x, belowList + 12, FlatUI.TEXT_DIM, false);
                 }
-                note(g, x, y + 104,
+                note(g, x, belowList + 30,
                         "Mapping walks the farm once so every chunk loads, recording the",
                         "paths, trees, colours and containers. Harvesting then plans over",
                         "the whole field instead of only the part you can see.");

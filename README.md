@@ -79,8 +79,9 @@ over the whole farm without walking it again.
 
 Once a farm is selected, `#apricorn` seeds its plan from the map — stands in unloaded chunks are kept
 and checked on arrival instead of being dropped — and the selection is set to the farm's bounds, so
-the other commands need no `#sel` step. The **Farms** tab of the window does the same with a
-dropdown and Map / Re-map / Cancel buttons.
+the other commands need no `#sel` step. The **Farms** tab of the window lists every farm you have
+surveyed with its stand and tree counts — click one to work on it, and the selected farm is lit — plus
+Map selection / Re-map / Cancel.
 
 ## Harvesting — `#apricorn`
 
@@ -229,7 +230,7 @@ Everything lives in one window on one key: **G**, or `#config`. Rebind it under
 
 | Tab | What it holds |
 | --- | --- |
-| **Farms** | Pick the surveyed farm to work on; Map / Re-map |
+| **Farms** | Every surveyed farm listed with its size — click one to work on it; Map / Re-map |
 | **Harvest** | Tops, deposit, chest search radius, colour filter; Run |
 | **Planting** | Spacing, wall clearance, row snap, row direction, default colour; Run |
 | **Row colours** | One row per line — left click for the next colour, right click for the previous |
