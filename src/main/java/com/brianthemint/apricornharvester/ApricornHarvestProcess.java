@@ -23,6 +23,7 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
@@ -199,6 +200,8 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
     private boolean previousAllowBreak;
     /** Leaf blocks this run added to Baritone's blocksToAvoid, so only those are removed after. */
     private final List<Block> canopyBlocksAdded = new ArrayList<>();
+    /** Said once per run when there is no free hotbar slot to switch to before clicking. */
+    private boolean warnedFullHotbar;
 
     private final Set<BlockPos> clickQueue = new LinkedHashSet<>();
     private final Map<BlockPos, Integer> clickAttempts = new HashMap<>();
@@ -388,6 +391,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         this.towerBlockPos = null;
         this.towerTicks = 0;
         this.previousSlot = -1;
+        this.warnedFullHotbar = false;
         this.towerSkippedForRun = false;
         this.depositPhase = DepositPhase.IDLE;
         this.depositChestPos = null;
@@ -1946,6 +1950,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
             logDirect("Could not harvest " + target + " after " + MAX_CLICK_ATTEMPTS + " attempts, skipping.");
             return;
         }
+        emptyTheHand();
         Direction face = faceToward(eye, target);
         BlockHitResult hit = new BlockHitResult(clickPoint, face, target, false);
         baritone.getLookBehavior().updateTarget(rotationTo(eye, clickPoint), true);
@@ -1961,6 +1966,44 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         }
         lastClickTick.put(target, now);
         clickCooldown = CLICK_COOLDOWN;
+    }
+
+    /**
+     * Makes sure the hand cannot place a block before an apricorn is right-clicked.
+     *
+     * <p>Harvesting is a right click on the leaves, and a right click while holding a block puts
+     * that block down instead. The scaffolding dirt is the obvious way to end up holding one, but
+     * anything placeable will do it, so the hand is switched to an empty slot - or failing that to
+     * something that is not a block - before every click.
+     */
+    private void emptyTheHand() {
+        net.minecraft.world.entity.player.Inventory inv = ctx.player().getInventory();
+        if (!(inv.getItem(inv.selected).getItem() instanceof BlockItem)) {
+            return;
+        }
+        int empty = -1;
+        int harmless = -1;
+        for (int i = 0; i < 9; i++) {
+            ItemStack stack = inv.getItem(i);
+            if (stack.isEmpty()) {
+                empty = i;
+                break;
+            }
+            if (harmless < 0 && !(stack.getItem() instanceof BlockItem)) {
+                harmless = i;
+            }
+        }
+        int target = empty >= 0 ? empty : harmless;
+        if (target < 0) {
+            if (!warnedFullHotbar) {
+                warnedFullHotbar = true;
+                logDirect("Every hotbar slot holds a block - clear one, or the bot will place"
+                        + " blocks instead of picking apricorns.");
+            }
+            return;
+        }
+        inv.selected = target;
+        ctx.playerController().syncHeldItem();
     }
 
     private double reachSq() {
