@@ -72,6 +72,10 @@ public final class TaskLocations {
     private static final Map<Task, String> SELECTIONS = new EnumMap<>(Task.class);
     /** Travel command per task, without the leading slash ("" = do not teleport). */
     private static final Map<Task, String> COMMANDS = new EnumMap<>(Task.class);
+    /** Seconds each task's command must be left alone between uses (server warp cooldowns). */
+    private static final Map<Task, Integer> COOLDOWNS = new EnumMap<>(Task.class);
+    /** When each command was last sent, so the cooldown can be honoured. */
+    private static final Map<Task, Long> LAST_SENT = new EnumMap<>(Task.class);
 
     private static boolean loaded;
 
@@ -84,6 +88,9 @@ public final class TaskLocations {
         COMMANDS.put(Task.MINE, "rtp");
         COMMANDS.put(Task.HUNT, "rtp");
         COMMANDS.put(Task.CRAFT, "home home2");
+        // /rtp is commonly on a five minute cooldown; /home usually is not.
+        COOLDOWNS.put(Task.MINE, 300);
+        COOLDOWNS.put(Task.HUNT, 300);
     }
 
     private TaskLocations() {
@@ -161,13 +168,50 @@ public final class TaskLocations {
         }
     }
 
-    /** Sends the task's travel command, if it has one. Returns true when something was sent. */
+    /**
+     * Seconds a task's travel command must be left alone between uses.
+     *
+     * <p>Server warps are usually on a cooldown - {@code /rtp} is commonly five minutes - and
+     * spamming one just earns a refusal in chat while the bot believes it has teleported. The
+     * cooldown is remembered per task and honoured by {@link #sendTravel}.
+     */
+    public static int getCooldownSeconds(Task task) {
+        ensureLoaded();
+        return COOLDOWNS.getOrDefault(task, 0);
+    }
+
+    public static void setCooldownSeconds(Task task, int seconds) {
+        ensureLoaded();
+        COOLDOWNS.put(task, Math.max(0, Math.min(3600, seconds)));
+        save();
+    }
+
+    /** Seconds still to wait before this task's command may be sent again; 0 when it is ready. */
+    public static int secondsUntilReady(Task task) {
+        Long last = LAST_SENT.get(task);
+        if (last == null) {
+            return 0;
+        }
+        long elapsed = (System.currentTimeMillis() - last) / 1000L;
+        return (int) Math.max(0, getCooldownSeconds(task) - elapsed);
+    }
+
+    public static boolean isReady(Task task) {
+        return secondsUntilReady(task) == 0;
+    }
+
+    /**
+     * Sends the task's travel command, if it has one and its cooldown has passed.
+     *
+     * @return true when something was actually sent
+     */
     public static boolean sendTravel(Task task) {
         String command = getCommand(task);
-        if (command.isEmpty() || Minecraft.getInstance().player == null) {
+        if (command.isEmpty() || Minecraft.getInstance().player == null || !isReady(task)) {
             return false;
         }
         Minecraft.getInstance().player.connection.sendCommand(command);
+        LAST_SENT.put(task, System.currentTimeMillis());
         return true;
     }
 
@@ -210,6 +254,12 @@ public final class TaskLocations {
                     SELECTIONS.put(task, value);
                 } else if (key.endsWith(".command")) {
                     COMMANDS.put(task, normalize(value));
+                } else if (key.endsWith(".cooldown")) {
+                    try {
+                        COOLDOWNS.put(task, Integer.parseInt(value));
+                    } catch (NumberFormatException ignored) {
+                        // Keep the default cooldown for this task.
+                    }
                 }
             }
         } catch (IOException ignored) {
@@ -223,6 +273,7 @@ public final class TaskLocations {
         for (Task task : Task.values()) {
             lines.add(task.key() + ".selection=" + SELECTIONS.getOrDefault(task, ""));
             lines.add(task.key() + ".command=" + COMMANDS.getOrDefault(task, ""));
+            lines.add(task.key() + ".cooldown=" + COOLDOWNS.getOrDefault(task, 0));
         }
         try {
             Path path = file();

@@ -17,6 +17,7 @@ every job except mining, so no leaf, log or build of yours is ever broken.
 | Map | `#farm` | Surveys a field once so runs can plan over the whole farm, not just the loaded part |
 | Ore | `#ore` | Mines a single ore (platinum, silver, …) on its own, out and back |
 | Hunt | `#hunt` | Finds wild apricorn trees, defaulting to the colours you have none of |
+| Schedule | `#schedule` | Runs the jobs one after another — tools, harvest, deposit, craft — optionally on a loop |
 | Areas | `#loc` | Remembers a saved selection **and** a travel command (`/home`, `/warp`, `/rtp`) per job |
 | Window | **G** | One tabbed window for every job and setting (also `#config`) |
 | Help | `#ah` | The addon's own command overview, in chat or in the window |
@@ -55,6 +56,37 @@ addon without them. Drop all three jars into `mods/`.
 #apricorn                 harvest the ripe apricorns
 #pokeball plan            see what it would take to craft balls
 ```
+
+## Schedule — `#schedule`
+
+A farm day is the same handful of jobs every time, so the **Schedule** tab is simply which of them
+are switched on and in what order. Switch modules on, drag them up or down with the arrows, press
+**Run**, and the bot works through them — travelling to each job's task area first.
+
+| Module | What it does |
+| --- | --- |
+| Repair/replace tools | Notices a worn-out or missing pickaxe and makes a new one, mining and smelting whatever that takes |
+| Harvest apricorns | The harvest run |
+| Bone-meal saplings | Grows what was planted |
+| Plant the grid | Fills empty soil |
+| Mine ore | Fetches an ore you choose, in the amount you choose |
+| Hunt new colours | Looks for apricorn colours you have none of |
+| Craft Poke Balls | The full crafting pipeline |
+| Empty into chests | Puts everything away — keeping the dirt, bone meal, fuel and tools the jobs need |
+
+```
+#schedule                 show the schedule
+#schedule start | stop    run it, or stop it
+#schedule on harvest      switch a module on
+#schedule off mine        switch one off
+#schedule repeat true     start again from the top when it finishes
+```
+
+With **repeat** on it keeps the farm going by itself, lap after lap.
+
+**Warp cooldowns are honoured.** `/rtp` is commonly on a five-minute cooldown, so each task remembers
+how long its command must be left alone (`#loc` stores it; 5 minutes for the mine and hunt tasks by
+default) and waits rather than spamming a command the server would refuse.
 
 ## Farms — `#farm`
 
@@ -240,6 +272,7 @@ Everything lives in one window on one key: **G**, or `#config`. Rebind it under
 
 | Tab | What it holds |
 | --- | --- |
+| **Schedule** | The modules a run works through: switches, ordering arrows, repeat, Run |
 | **Farms** | Every surveyed farm listed with its size — click one to work on it; Map / Re-map / Delete |
 | **Selections** | The `#save` selections: click to load, Delete, or save the current one under a name |
 | **Harvest** | Tops, deposit, chest search radius, colour filter; Run |

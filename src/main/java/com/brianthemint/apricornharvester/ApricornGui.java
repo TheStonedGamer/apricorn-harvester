@@ -4,6 +4,8 @@ import baritone.api.utils.Helper;
 import com.brianthemint.apricornharvester.pokeball.CraftPlan;
 import com.brianthemint.apricornharvester.pokeball.PokeballConfig;
 import com.brianthemint.apricornharvester.pokeball.PokeballRecipes;
+import com.brianthemint.apricornharvester.schedule.Schedule;
+import com.brianthemint.apricornharvester.schedule.ScheduleStep;
 import com.brianthemint.apricornharvester.ui.FlatUI;
 import com.pixelmonmod.pixelmon.enums.items.ApricornType;
 import net.minecraft.client.gui.GuiGraphics;
@@ -40,6 +42,7 @@ public class ApricornGui extends Screen {
 
     /** The tabs, in sidebar order. */
     public enum Tab {
+        SCHEDULE("Schedule"),
         FARMS("Farms"),
         SELECTIONS("Selections"),
         HARVEST("Harvest"),
@@ -155,6 +158,7 @@ public class ApricornGui extends Screen {
         int w = contentW();
 
         switch (lastTab) {
+            case SCHEDULE -> initSchedule(x, y, w);
             case FARMS -> initFarms(x, y, w);
             case SELECTIONS -> initSelections(x, y, w);
             case HARVEST -> initHarvest(x, y, w);
@@ -299,6 +303,53 @@ public class ApricornGui extends Screen {
         }
         onClose();
         context.mapper().start(name, sel.min(), sel.max());
+    }
+
+    // -- schedule
+
+    /**
+     * The schedule builder: every module with a switch, arrows to order them, and Run/Cancel for
+     * the whole sequence.
+     */
+    private void initSchedule(int x, int y, int w) {
+        List<ScheduleStep> order = Schedule.order();
+        for (int i = 0; i < order.size(); i++) {
+            ScheduleStep step = order.get(i);
+            int rowY = y + i * 20;
+            widgets.add(new FlatUI.Toggle(x, rowY + 1, () -> Schedule.isEnabled(step), enabled -> {
+                Schedule.setEnabled(step, enabled);
+                rebuildWidgets();
+            }));
+            widgets.add(new FlatUI.Button(x + 40, rowY, w - 100, 18, step::label, () -> {
+                Schedule.setEnabled(step, !Schedule.isEnabled(step));
+                rebuildWidgets();
+            }, Schedule.isEnabled(step)));
+            widgets.add(new FlatUI.Button(x + w - 56, rowY, 26, 18, () -> "^", () -> {
+                Schedule.move(step, -1);
+                rebuildWidgets();
+            }, false));
+            widgets.add(new FlatUI.Button(x + w - 28, rowY, 26, 18, () -> "v", () -> {
+                Schedule.move(step, 1);
+                rebuildWidgets();
+            }, false));
+        }
+
+        int optionsY = y + order.size() * 20 + 8;
+        widgets.add(new FlatUI.Toggle(x, optionsY, Schedule::isRepeat, Schedule::setRepeat));
+        widgets.add(new FlatUI.Stepper(x + w - 96, optionsY - 1, 96, Schedule::getMineAmount,
+                Schedule::setMineAmount, "ore"));
+
+        List<OreMineController.Ore> ores = OreMineController.Ore.available();
+        if (!ores.isEmpty()) {
+            OreMineController.Ore current = OreMineController.Ore.parse(Schedule.getMineOre());
+            dropdowns.add(new FlatUI.Dropdown<>(x + w - 170, optionsY + 24, 170, ores,
+                    current == null ? ores.get(0) : current, OreMineController.Ore::label,
+                    ore -> Schedule.setMineOre(ore.name())));
+        }
+
+        runPair(() -> context.schedule() != null && context.schedule().isRunning(),
+                () -> context.schedule().start(),
+                () -> context.schedule().stop());
     }
 
     // -- saved selections
@@ -927,6 +978,21 @@ public class ApricornGui extends Screen {
                         "Mapping walks the farm once so every chunk loads, recording the",
                         "paths, trees, colours and containers. Harvesting then plans over",
                         "the whole field instead of only the part you can see.");
+            }
+            case SCHEDULE -> {
+                FlatUI.label(g, "Modules - switch on what a run should do, in order", x, y - 10);
+                int optionsY = y + Schedule.order().size() * 20 + 8;
+                FlatUI.label(g, "Repeat forever", x + 40, optionsY + 4);
+                FlatUI.label(g, "Mine amount", x + w - 180, optionsY + 4);
+                FlatUI.label(g, "Ore to mine", x, optionsY + 30);
+                String running = context.schedule() == null ? "" : context.schedule().status();
+                g.drawString(this.font, fit(running, w), x, optionsY + 54,
+                        context.schedule() != null && context.schedule().isRunning()
+                                ? FlatUI.ACCENT : FlatUI.TEXT_DIM, false);
+                note(g, x, top() + PANEL_H - 56,
+                        "Each module travels to its own task area first, so set those up on",
+                        "the Task areas tab. Warp cooldowns are honoured: with /rtp on five",
+                        "minutes the run waits rather than spamming it.");
             }
             case SELECTIONS -> {
                 List<String> names = TaskLocations.savedSelectionNames();

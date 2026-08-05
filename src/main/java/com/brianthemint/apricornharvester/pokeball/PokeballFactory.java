@@ -165,6 +165,23 @@ public final class PokeballFactory {
             return planned;
         }
 
+        runPlan(planned, PokeballConfig.getCount() + "x " + PokeballRecipes.ballName(ball));
+        return planned;
+    }
+
+    /**
+     * Runs any plan, not only a Poke Ball one: the executor cares about mine/harvest/smelt/craft
+     * steps, not about what they add up to. The tool upkeep module uses this to make a pickaxe the
+     * same way a run makes a ball.
+     *
+     * @param planned what to produce
+     * @param what    a short description for the chat lines
+     * @return true when the run started
+     */
+    public boolean runPlan(CraftPlan planned, String what) {
+        if (isRunning() || planned == null || !planned.isPossible() || planned.isEmpty()) {
+            return false;
+        }
         this.plan = planned;
         // Mining always comes first: it is the only step that needs the mining area, and every
         // mined item is a leaf of the recipe tree, so pulling those forward keeps dependencies.
@@ -178,16 +195,17 @@ public final class PokeballFactory {
         this.travelledToMine = false;
         this.travelledHome = false;
         this.travelledToFarm = false;
+        this.furnaces = new ArrayList<>();
+        this.furnaceIndex = 0;
         this.stage = hasMiningSteps() && !PokeballConfig.getMineCommand().isEmpty()
                 ? Stage.TRAVEL_TO_MINE
                 : Stage.STEP;
 
-        logDirect("Poke Ball factory started: " + PokeballConfig.getCount() + "x "
-                + PokeballRecipes.ballName(ball) + ", " + steps.size() + " steps.");
+        logDirect("Making " + what + ": " + steps.size() + " steps.");
         for (CraftPlan.Step step : steps) {
             logDirect("  - " + step.describe());
         }
-        return planned;
+        return true;
     }
 
     public void stop() {

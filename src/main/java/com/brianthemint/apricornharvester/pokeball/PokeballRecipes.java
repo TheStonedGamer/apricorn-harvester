@@ -142,6 +142,26 @@ public final class PokeballRecipes {
      * player currently carries. Steps come out deepest-dependency-first, so running them in order
      * always has the inputs of the next step ready.
      */
+    /**
+     * Plans however many of any item, not just Poke Balls: the resolver only knows about recipes,
+     * so "make me an iron pickaxe" is the same problem as "make me a Great Ball". Used by the tool
+     * upkeep module.
+     */
+    public static CraftPlan planItem(Item target, int count, Inventory inventory) {
+        CraftPlan plan = new CraftPlan();
+        if (target == null || count <= 0) {
+            return plan;
+        }
+        Resolver resolver = new Resolver(inventoryCounts(inventory));
+        if (!resolver.ensure(target, count, 0)) {
+            plan.missing.addAll(resolver.missing);
+            return plan;
+        }
+        plan.steps.addAll(resolver.steps);
+        plan.missing.addAll(resolver.missing);
+        return plan;
+    }
+
     public static CraftPlan plan(RecipeHolder<?> ballRecipe, int count, Inventory inventory) {
         CraftPlan plan = new CraftPlan();
         ItemStack result = resultOf(ballRecipe);

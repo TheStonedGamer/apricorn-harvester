@@ -2,6 +2,7 @@ package com.brianthemint.apricornharvester;
 
 import baritone.api.IBaritone;
 import com.brianthemint.apricornharvester.pokeball.PokeballFactory;
+import com.brianthemint.apricornharvester.schedule.ScheduleRunner;
 
 /**
  * The addon's live objects in one place: Baritone plus every job the screens and commands drive.
@@ -20,12 +21,15 @@ public final class AddonContext {
     private final OreMineController ore;
     private final ApricornHunter hunter;
     private final FarmMapper mapper;
+    private final DepositController deposit;
+    private ScheduleRunner schedule;
 
     public AddonContext(IBaritone baritone, ApricornHarvestProcess harvest,
                         ApricornPlantProcess plant, ApricornBonemealProcess bonemeal,
                         PokeballFactory pokeball, OreMineController ore, ApricornHunter hunter,
-                        FarmMapper mapper) {
+                        FarmMapper mapper, DepositController deposit) {
         this.mapper = mapper;
+        this.deposit = deposit;
         this.baritone = baritone;
         this.harvest = harvest;
         this.plant = plant;
@@ -47,6 +51,19 @@ public final class AddonContext {
         return mapper;
     }
 
+    public DepositController deposit() {
+        return deposit;
+    }
+
+    public ScheduleRunner schedule() {
+        return schedule;
+    }
+
+    /** The runner is built from this context, so it is attached once both exist. */
+    public void setSchedule(ScheduleRunner schedule) {
+        this.schedule = schedule;
+    }
+
     /** Drives the jobs that are plain tick controllers rather than Baritone processes. */
     public void tickControllers() {
         if (pokeball != null) {
@@ -60,6 +77,13 @@ public final class AddonContext {
         }
         if (mapper != null) {
             mapper.tick();
+        }
+        if (deposit != null) {
+            deposit.tick();
+        }
+        // Last: the schedule only starts the next module once the others report themselves idle.
+        if (schedule != null) {
+            schedule.tick();
         }
     }
 
@@ -100,6 +124,7 @@ public final class AddonContext {
                 || (pokeball != null && pokeball.isRunning())
                 || (ore != null && ore.isRunning())
                 || (hunter != null && hunter.isRunning())
-                || (mapper != null && mapper.isRunning());
+                || (mapper != null && mapper.isRunning())
+                || (deposit != null && deposit.isRunning());
     }
 }

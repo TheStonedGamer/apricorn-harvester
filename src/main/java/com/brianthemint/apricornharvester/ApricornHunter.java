@@ -39,6 +39,8 @@ public final class ApricornHunter {
     private int ticks;
     /** True while waiting out the settle time after a hop. */
     private boolean settling;
+    /** Throttles the "waiting for cooldown" message to one every half minute. */
+    private int lastCooldownReport = -1;
 
     public ApricornHunter(IBaritone baritone) {
         this.baritone = baritone;
@@ -198,15 +200,27 @@ public final class ApricornHunter {
             logDirect("No " + names(wanted) + " apricorns found, and no hops left.");
             return;
         }
-        hopsLeft--;
         String command = TaskLocations.getCommand(TaskLocations.Task.HUNT);
         if (command.isEmpty()) {
             running = false;
             logDirect("Nothing here, and no hunt command set. Use #loc hunt cmd rtp.");
             return;
         }
+        // Warps are usually on a cooldown - /rtp is typically five minutes - so the hunt waits it
+        // out rather than spamming a command the server will just refuse.
+        int wait = TaskLocations.secondsUntilReady(TaskLocations.Task.HUNT);
+        if (wait > 0) {
+            if (wait / 30 != lastCooldownReport) {
+                lastCooldownReport = wait / 30;
+                logDirect("Waiting " + wait + "s for the /" + command + " cooldown...");
+            }
+            ticks = 0;
+            return;
+        }
+        hopsLeft--;
         logDirect("Nothing here - hopping (" + hopsLeft + " left).");
         TaskLocations.sendTravel(TaskLocations.Task.HUNT);
+        lastCooldownReport = -1;
         settling = true;
         ticks = 0;
     }
