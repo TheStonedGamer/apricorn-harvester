@@ -39,6 +39,16 @@ public final class AddonSettings {
      */
     private static final EnumSet<ApricornType> HARVEST_COLOURS = EnumSet.allOf(ApricornType.class);
 
+    /**
+     * Whether the harvest works from on top of the bushes instead of from the paths.
+     *
+     * <p>On a farm of 3x3x3 bushes the canopy is one continuous surface, and from up there every
+     * apricorn of the bush underfoot and of its neighbours is within reach - far more per stop than
+     * a path stand can see, and nothing is hidden behind leaves. The bot climbs up with dirt, picks
+     * the field clean, then comes down and collects the drops from the paths.
+     */
+    private static boolean harvestFromCanopy = true;
+
     // -- bone meal
     /** Bone meal applications spent on one sapling before it is given up on. */
     private static int bonemealMax = 32;
@@ -82,6 +92,18 @@ public final class AddonSettings {
     public static void setChestRadius(int value) {
         ensureLoaded();
         chestRadius = Math.max(MIN_CHEST_RADIUS, Math.min(MAX_CHEST_RADIUS, value));
+        save();
+    }
+
+    /** Whether the harvest works from on top of the bushes rather than from the paths. */
+    public static boolean isHarvestFromCanopy() {
+        ensureLoaded();
+        return harvestFromCanopy;
+    }
+
+    public static void setHarvestFromCanopy(boolean value) {
+        ensureLoaded();
+        harvestFromCanopy = value;
         save();
     }
 
@@ -166,6 +188,7 @@ public final class AddonSettings {
                     case "harvest.tops" -> harvestTops = Boolean.parseBoolean(value);
                     case "harvest.deposit" -> harvestDeposit = Boolean.parseBoolean(value);
                     case "harvest.chestRadius" -> chestRadius = parseInt(value, chestRadius);
+                    case "harvest.fromCanopy" -> harvestFromCanopy = Boolean.parseBoolean(value);
                     case "harvest.colours" -> {
                         HARVEST_COLOURS.clear();
                         for (String name : value.split(",")) {
@@ -222,6 +245,7 @@ public final class AddonSettings {
         lines.add("harvest.tops=" + harvestTops);
         lines.add("harvest.deposit=" + harvestDeposit);
         lines.add("harvest.chestRadius=" + chestRadius);
+        lines.add("harvest.fromCanopy=" + harvestFromCanopy);
         StringBuilder colours = new StringBuilder();
         for (ApricornType type : HARVEST_COLOURS) {
             if (colours.length() > 0) {

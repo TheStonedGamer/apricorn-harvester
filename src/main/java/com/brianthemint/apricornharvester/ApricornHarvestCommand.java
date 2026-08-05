@@ -53,6 +53,18 @@ public class ApricornHarvestCommand implements ICommand {
                 }
                 return;
             }
+            if (key.equalsIgnoreCase("canopy") || key.equalsIgnoreCase("ontop")) {
+                if (value.equalsIgnoreCase("true") || value.equalsIgnoreCase("on")) {
+                    AddonSettings.setHarvestFromCanopy(true);
+                    logDirect("Harvesting from on top of the bushes.");
+                } else if (value.equalsIgnoreCase("false") || value.equalsIgnoreCase("off")) {
+                    AddonSettings.setHarvestFromCanopy(false);
+                    logDirect("Harvesting from the paths only.");
+                } else {
+                    logDirect("Expected true or false, got '" + value + "'.");
+                }
+                return;
+            }
             if (key.equalsIgnoreCase("colours") || key.equalsIgnoreCase("colors")) {
                 setColours(value);
                 return;
@@ -99,6 +111,12 @@ public class ApricornHarvestCommand implements ICommand {
             if (arg.equalsIgnoreCase("deposit")) {
                 logDirect("Apricorn deposit = " + process.isDepositEnabled()
                         + ". Use #apricorn deposit <true|false> to change it.");
+                return;
+            }
+            if (arg.equalsIgnoreCase("canopy") || arg.equalsIgnoreCase("ontop")) {
+                logDirect("Harvesting from " + (AddonSettings.isHarvestFromCanopy()
+                        ? "on top of the bushes" : "the paths")
+                        + ". Use #apricorn canopy <true|false> to change it.");
                 return;
             }
             if (arg.equalsIgnoreCase("colours") || arg.equalsIgnoreCase("colors")) {
@@ -164,13 +182,14 @@ public class ApricornHarvestCommand implements ICommand {
     public Stream<String> tabComplete(String label, IArgConsumer args) {
         if (args.hasExactlyOne()) {
             return new TabCompleteHelper()
-                    .append("start", "stop", "pause", "resume", "tops", "deposit", "chestradius",
+                    .append("start", "stop", "pause", "resume", "canopy", "tops", "deposit", "chestradius",
                             "colours")
                     .filterPrefix(args.peekString()).stream();
         }
         if (args.hasExactly(2)) {
             String first = args.peekString();
-            if (first.equalsIgnoreCase("tops") || first.equalsIgnoreCase("deposit")) {
+            if (first.equalsIgnoreCase("tops") || first.equalsIgnoreCase("deposit")
+                    || first.equalsIgnoreCase("canopy")) {
                 return new TabCompleteHelper().append("true", "false")
                         .filterPrefix(args.peekString(1)).stream();
             }
@@ -210,6 +229,8 @@ public class ApricornHarvestCommand implements ICommand {
                 "> #apricorn deposit true after harvesting, find a nearby chest and deposit apricorns",
                 "> #apricorn deposit false do not deposit (apricorns stay in inventory)",
                 "> #apricorn deposit      show the current value",
+                "> #apricorn canopy true  harvest from on top of the bushes (the default)",
+                "> #apricorn canopy false harvest from the farm paths instead",
                 "> #apricorn chestradius 24  how far to look for a container to deposit into",
                 "> #apricorn colours red      harvest only red apricorns",
                 "> #apricorn colours red,blue harvest only those colours",

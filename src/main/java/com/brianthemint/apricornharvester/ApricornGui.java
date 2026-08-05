@@ -411,15 +411,17 @@ public class ApricornGui extends Screen {
     // -- harvest
 
     private void initHarvest(int x, int y, int w) {
-        widgets.add(new FlatUI.Toggle(x + w - 34, y, AddonSettings::isHarvestTops,
+        widgets.add(new FlatUI.Toggle(x + w - 34, y, AddonSettings::isHarvestFromCanopy,
+                AddonSettings::setHarvestFromCanopy));
+        widgets.add(new FlatUI.Toggle(x + w - 34, y + 26, AddonSettings::isHarvestTops,
                 AddonSettings::setHarvestTops));
-        widgets.add(new FlatUI.Toggle(x + w - 34, y + 26, AddonSettings::isHarvestDeposit,
+        widgets.add(new FlatUI.Toggle(x + w - 34, y + 52, AddonSettings::isHarvestDeposit,
                 AddonSettings::setHarvestDeposit));
-        widgets.add(new FlatUI.Stepper(x + w - 96, y + 50, 96, AddonSettings::getChestRadius,
+        widgets.add(new FlatUI.Stepper(x + w - 96, y + 76, 96, AddonSettings::getChestRadius,
                 AddonSettings::setChestRadius, "blocks"));
 
         ApricornType[] types = ApricornPlanting.types();
-        int colourY = y + 90;
+        int colourY = y + 116;
         int buttonW = (w - 12) / 4;
         for (int i = 0; i < types.length; i++) {
             ApricornType type = types[i];
@@ -940,14 +942,22 @@ public class ApricornGui extends Screen {
                         "pointing at nothing.");
             }
             case HARVEST -> {
-                FlatUI.label(g, "Reach for high apricorns (tops)", x, y + 4);
-                FlatUI.label(g, "Deposit into a chest afterwards", x, y + 30);
-                FlatUI.label(g, "Chest search radius", x, y + 55);
-                FlatUI.label(g, "Colours to harvest", x, y + 80);
+                FlatUI.label(g, "Work from on top of the bushes", x, y + 4);
+                FlatUI.label(g, "Reach for high apricorns (tops)", x, y + 30);
+                FlatUI.label(g, "Deposit into a chest afterwards", x, y + 56);
+                FlatUI.label(g, "Chest search radius", x, y + 81);
+                FlatUI.label(g, "Colours to harvest", x, y + 106);
                 String filter = AddonSettings.isEveryColourHarvested()
                         ? "every colour" : ApricornHarvestProcess.colourFilterText();
-                g.drawString(this.font, filter, x + w - this.font.width(filter), y + 80,
-                        FlatUI.ACCENT, false);
+                g.drawString(this.font, fit(filter, 150), x + w - this.font.width(fit(filter, 150)),
+                        y + 106, FlatUI.ACCENT, false);
+                note(g, x, top() + PANEL_H - 62,
+                        AddonSettings.isHarvestFromCanopy()
+                                ? "From the canopy one stop reaches a whole bush and its"
+                                : "From the paths the bot never steps on a bush, but only",
+                        AddonSettings.isHarvestFromCanopy()
+                                ? "neighbours. It climbs up with dirt, then comes down for drops."
+                                : "reaches what a 1-wide path can see.");
             }
             case PLANT -> {
                 FlatUI.label(g, "Grid spacing", x, y + 4);

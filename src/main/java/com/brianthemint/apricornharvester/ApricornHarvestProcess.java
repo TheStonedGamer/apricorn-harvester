@@ -23,6 +23,7 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BarrelBlockEntity;
@@ -115,6 +116,10 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
     private static final int MAX_SELECTION_HEIGHT = 64;
     /** Extra margin added to the vanilla block reach when deciding what we can click. */
     private static final double REACH_MARGIN = 0.5;
+    /** How long the bot chases the dirt it just broke before giving up on it. */
+    private static final int DIRT_PICKUP_TICKS = 60;
+    /** How far from the tower the scaffold dirt is looked for. */
+    private static final double DIRT_PICKUP_RADIUS = 4.0;
     /**
      * How far below the selection a column may be searched for a stand. Deep enough for sunken
      * paths and irrigation channels, shallow enough that an open column never sends the bot down
@@ -201,8 +206,16 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
     private double bestGoalDistSq;
     /** Ticks since the player last got measurably closer to the current stand. */
     private enum TowerPhase {
-        IDLE, EQUIP_DIRT, LOOK_DOWN, JUMP_PLACE, WAIT_LAND, HARVEST, LOOK_BREAK, BREAKING, WAIT_FALL
+        IDLE, EQUIP_DIRT, LOOK_DOWN, JUMP_PLACE, WAIT_LAND, HARVEST, LOOK_BREAK, BREAKING, WAIT_FALL,
+        COLLECT_DIRT
     }
+    /** Pillaring up with dirt to reach the canopy at the start of a roof sweep. */
+    private enum ClimbPhase { IDLE, EQUIP, JUMP_PLACE, WAIT_LAND }
+
+    private ClimbPhase climbPhase = ClimbPhase.IDLE;
+    private int climbTargetY;
+    private int climbTicks;
+
     private TowerPhase towerPhase = TowerPhase.IDLE;
     private BlockPos towerBlockPos = null;
     private int towerTicks = 0;
@@ -345,6 +358,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         this.noProgressTicks = 0;
         this.harvestedAtThisStop = false;
         this.towerPhase = TowerPhase.IDLE;
+        this.climbPhase = ClimbPhase.IDLE;
         this.towerBlockPos = null;
         this.towerTicks = 0;
         this.previousSlot = -1;
@@ -361,7 +375,8 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         // (settings are read live by the pathfinder, so every path respects it).
         this.previousAllowBreak = BaritoneAPI.getSettings().allowBreak.value;
         BaritoneAPI.getSettings().allowBreak.value = false;
-        avoidCanopy(true);
+        // Working from the canopy means walking on it; only a path-based run keeps off the bushes.
+        avoidCanopy(!AddonSettings.isHarvestFromCanopy());
         // Precalculate path stands. A mapped farm contributes the stands it recorded while walking
         // the field, so parts of the farm that are not loaded right now are still planned for -
         // the client reads unloaded chunks as air, which is what used to make a big farm stop at
@@ -417,6 +432,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         skippedItems.clear();
         patrolDone = true;
         towerPhase = TowerPhase.IDLE;
+        restoreHeldSlot();
         depositPhase = DepositPhase.IDLE;
         depositChestPos = null;
         depositTicks = 0;
@@ -584,6 +600,12 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                 continue;
             }
 
+            if (climbPhase != ClimbPhase.IDLE) {
+                PathingCommand cmd = tickClimb();
+                if (cmd != null) {
+                    return cmd;
+                }
+            }
             if (towerPhase != TowerPhase.IDLE) {
                 PathingCommand cmd = tickTowering();
                 if (cmd != null) {
@@ -617,15 +639,18 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                 continue;
             }
 
-            if (calcFailed || goalUnreachable(stand)) {
+            if (calcFailed || goalUnreachable(stand) || stuck(stand)) {
                 calcFailed = false;
+                // A canopy stand the bot cannot walk to is usually just above it: a 3-block bush
+                // is not a jump, and nothing may be broken to get up. Stack dirt instead, the way
+                // a player would, and try again from up there.
+                if (AddonSettings.isHarvestFromCanopy() && !towerSkippedForRun
+                        && ctx.playerFeet().getY() < stand.getY() - 1) {
+                    logDirect("Climbing onto the canopy to reach " + stand + "...");
+                    beginClimb(stand.getY());
+                    continue;
+                }
                 logDirect("Cannot reach stand " + stand + " - skipping it.");
-                unreachableStands.add(stand);
-                nextStand();
-                continue;
-            }
-            if (stuck(stand)) {
-                logDirect("Stalled near stand " + stand + ", skipping ahead.");
                 unreachableStands.add(stand);
                 nextStand();
                 continue;
@@ -707,12 +732,55 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
     }
 
     /**
-     * Orders the path stands into a sweep: row by row, alternating direction, so the bot walks the
-     * farm like a lawnmower instead of criss-crossing it.
+     * Feet position on top of the bush in column (x, z), or null when the column is not a bush.
+     *
+     * <p>Working from the canopy beats working from the paths on a farm of packed bushes: the tops
+     * form one continuous surface, and standing on a bush puts every apricorn of that bush and of
+     * its neighbours within reach, with no leaves in the way. The bot climbs up once and sweeps the
+     * roof, then comes down for the drops.
+     */
+    private BlockPos canopyStand(int x, int z) {
+        for (int y = selMax.getY(); y >= selMin.getY(); y--) {
+            BlockPos pos = new BlockPos(x, y, z);
+            BlockState state = ctx.world().getBlockState(pos);
+            if (ApricornPlanting.typeOfLeaves(state) == null) {
+                continue;
+            }
+            // The highest leaf of the column: standable if there is room for the player above it.
+            BlockPos feet = pos.above();
+            BlockPos head = pos.above(2);
+            if (ctx.world().getBlockState(feet).getCollisionShape(ctx.world(), feet).isEmpty()
+                    && ctx.world().getBlockState(head).getCollisionShape(ctx.world(), head).isEmpty()) {
+                return feet;
+            }
+            return null;
+        }
+        return null;
+    }
+
+    /** Every standable bush top in the selection. */
+    private List<BlockPos> canopyStands() {
+        List<BlockPos> stands = new ArrayList<>();
+        for (int x = selMin.getX(); x <= selMax.getX(); x++) {
+            for (int z = selMin.getZ(); z <= selMax.getZ(); z++) {
+                BlockPos stand = canopyStand(x, z);
+                if (stand != null) {
+                    stands.add(stand);
+                }
+            }
+        }
+        return stands;
+    }
+
+    /**
+     * Orders the stands into a sweep: row by row, alternating direction, so the bot walks the
+     * farm like a lawnmower instead of criss-crossing it. The stands are the bush tops when
+     * harvesting from the canopy, otherwise the farm paths.
      */
     private void buildSweep() {
         harvestStands.clear();
-        List<BlockPos> stands = new ArrayList<>(pathStands);
+        List<BlockPos> stands = new ArrayList<>(
+                AddonSettings.isHarvestFromCanopy() ? canopyStands() : pathStands);
         stands.sort((a, b) -> {
             if (a.getZ() != b.getZ()) {
                 return Integer.compare(a.getZ(), b.getZ());
@@ -760,6 +828,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                     if (!ctx.world().getBlockState(head).getCollisionShape(ctx.world(), head).isEmpty()) {
                         logDirect("Low canopy at " + head + ", skipping tower here.");
                         towerPhase = TowerPhase.IDLE;
+                        restoreHeldSlot();
                         return null;
                     }
                     int slot = findDirtSlot();
@@ -769,6 +838,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                             towerSkippedForRun = true;
                         }
                         towerPhase = TowerPhase.IDLE;
+                        restoreHeldSlot();
                         return null;
                     }
                     previousSlot = ctx.player().getInventory().selected;
@@ -819,12 +889,6 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                 break;
                 
             case LOOK_BREAK:
-                if (towerTicks == 1) {
-                    if (previousSlot != -1) {
-                        ctx.player().getInventory().selected = previousSlot;
-                        ctx.playerController().syncHeldItem();
-                    }
-                }
                 baritone.getLookBehavior().updateTarget(new Rotation(ctx.player().getYRot(), 90.0f), true);
                 if (towerTicks > 2) {
                     towerPhase = TowerPhase.BREAKING;
@@ -849,13 +913,159 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                 
             case WAIT_FALL:
                 if (ctx.player().onGround()) {
-                    towerPhase = TowerPhase.IDLE;
+                    // Back to whatever was held before, so the bot is not left holding dirt.
+                    restoreHeldSlot();
+                    towerPhase = TowerPhase.COLLECT_DIRT;
                     towerTicks = 0;
                 }
                 break;
+
+            case COLLECT_DIRT: {
+                // The block that was placed and broken is now an item on the floor. Leaving it
+                // there loses a block of dirt every tower, and the run needs that dirt to keep
+                // towering, so it is walked over before moving on.
+                ItemEntity dirt = nearestDroppedDirt();
+                if (dirt == null || towerTicks > DIRT_PICKUP_TICKS) {
+                    if (dirt != null) {
+                        logDebug("Left the scaffold dirt at " + dirt.blockPosition() + ".");
+                    }
+                    towerPhase = TowerPhase.IDLE;
+                    restoreHeldSlot();
+                    towerTicks = 0;
+                    break;
+                }
+                BlockPos dirtPos = dirt.blockPosition();
+                if (ctx.playerFeet().closerThan(dirtPos, 1.5)) {
+                    // Standing on it: vanilla pickup does the rest.
+                    break;
+                }
+                return new PathingCommand(new GoalBlock(dirtPos), PathingCommandType.SET_GOAL_AND_PATH);
+            }
         }
-        
+
         return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
+    }
+
+    /**
+     * Pillars up with dirt until the feet reach {@link #climbTargetY}.
+     *
+     * <p>Used to get onto the canopy at the start of a roof sweep: a 3-block bush cannot be jumped,
+     * and the bot may not break its way up, so it stacks dirt under itself the way a player would.
+     * The pillar is left standing - it is the way back up next time - and the dirt it costs is a
+     * couple of blocks.
+     *
+     * @return the pathing command to hold with, or null when the climb is done or impossible
+     */
+    private PathingCommand tickClimb() {
+        if (climbPhase == ClimbPhase.IDLE) {
+            return null;
+        }
+        climbTicks++;
+        switch (climbPhase) {
+            case EQUIP: {
+                if (ctx.playerFeet().getY() >= climbTargetY) {
+                    endClimb();
+                    return null;
+                }
+                int slot = findDirtSlot();
+                if (slot == -1) {
+                    logDirect("No dirt in the hotbar to climb with - working from the paths instead.");
+                    towerSkippedForRun = true;
+                    endClimb();
+                    return null;
+                }
+                previousSlot = ctx.player().getInventory().selected;
+                ctx.player().getInventory().selected = slot;
+                ctx.playerController().syncHeldItem();
+                climbPhase = ClimbPhase.JUMP_PLACE;
+                climbTicks = 0;
+                break;
+            }
+            case JUMP_PLACE: {
+                baritone.getLookBehavior().updateTarget(new Rotation(ctx.player().getYRot(), 90.0f), true);
+                if (climbTicks == 1) {
+                    ctx.player().jumpFromGround();
+                } else if (climbTicks > 1 && ctx.player().position().y > ctx.playerFeet().getY() + 0.1) {
+                    BlockPos placePos = ctx.playerFeet();
+                    BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(placePos), Direction.UP,
+                            placePos, false);
+                    ctx.playerController().processRightClickBlock(ctx.player(), ctx.world(),
+                            InteractionHand.MAIN_HAND, hit);
+                    climbPhase = ClimbPhase.WAIT_LAND;
+                    climbTicks = 0;
+                } else if (climbTicks > 40) {
+                    logDirect("Could not climb onto the canopy here.");
+                    endClimb();
+                    return null;
+                }
+                break;
+            }
+            case WAIT_LAND: {
+                if (ctx.player().onGround()) {
+                    if (ctx.playerFeet().getY() >= climbTargetY) {
+                        logDirect("Up on the canopy.");
+                        endClimb();
+                        return null;
+                    }
+                    climbPhase = ClimbPhase.JUMP_PLACE;
+                    climbTicks = 0;
+                } else if (climbTicks > 60) {
+                    endClimb();
+                    return null;
+                }
+                break;
+            }
+            default:
+                break;
+        }
+        return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
+    }
+
+    /** Starts a dirt climb to the given feet height. */
+    private void beginClimb(int targetY) {
+        climbPhase = ClimbPhase.EQUIP;
+        climbTargetY = targetY;
+        climbTicks = 0;
+    }
+
+    private void endClimb() {
+        climbPhase = ClimbPhase.IDLE;
+        climbTicks = 0;
+        restoreHeldSlot();
+        currentGoalStand = null;
+    }
+
+    /** Puts the hotbar back to whatever was selected before the tower borrowed it. */
+    private void restoreHeldSlot() {
+        if (previousSlot >= 0 && previousSlot < 9 && ctx.player() != null) {
+            ctx.player().getInventory().selected = previousSlot;
+            ctx.playerController().syncHeldItem();
+        }
+        previousSlot = -1;
+    }
+
+    /** The nearest dropped dirt block within a few blocks, or null. */
+    private ItemEntity nearestDroppedDirt() {
+        Vec3 p = ctx.player().position();
+        AABB box = ctx.player().getBoundingBox().inflate(DIRT_PICKUP_RADIUS);
+        ItemEntity best = null;
+        double bestDistSq = Double.MAX_VALUE;
+        for (ItemEntity e : ctx.world().getEntitiesOfClass(ItemEntity.class, box)) {
+            if (!e.isAlive() || !isDirt(e.getItem())) {
+                continue;
+            }
+            double d = e.position().distanceToSqr(p);
+            if (d < bestDistSq) {
+                bestDistSq = d;
+                best = e;
+            }
+        }
+        return best;
+    }
+
+    private static boolean isDirt(ItemStack stack) {
+        return stack.getItem() == Items.DIRT || stack.getItem() == Items.COARSE_DIRT
+                || stack.getItem() == Items.ROOTED_DIRT;
     }
 
     private int findDirtSlot() {
@@ -1706,6 +1916,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         skippedItems.clear();
         patrolDone = true;
         towerPhase = TowerPhase.IDLE;
+        restoreHeldSlot();
         clickQueue.clear();
         clickAttempts.clear();
         lastClickTick.clear();
@@ -1732,6 +1943,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
             localPickup = false;
             skippedItems.clear();
             towerPhase = TowerPhase.IDLE;
+            restoreHeldSlot();
             clickQueue.clear();
             climbTargets.clear();
             climbStands.clear();

@@ -85,22 +85,19 @@ Map selection / Re-map / Cancel.
 
 ## Harvesting — `#apricorn`
 
-The bot **sweeps the farm paths**: it lists every column with a walkable, non-tree surface, keeps the
-ones that can see a ripe apricorn, and walks them row by row like a lawnmower. At each stop it
-right-clicks everything within block reach — whichever bush it belongs to — then collects what fell
-before moving on. Apricorns no path can reach are left standing.
+**By default it works from on top of the bushes.** On a farm of packed 3×3×3 bushes the canopy is one
+continuous surface, and standing on a bush puts every apricorn of that bush *and its neighbours*
+within reach, with no leaves in the way — far more per stop than a 1-wide path can see. The bot
+climbs up by stacking dirt (as a player would; it never breaks anything), sweeps the roof row by row
+like a lawnmower clicking everything in reach, then comes down and collects the drops from the
+ground.
 
-This suits the usual layout of 3×3×3 bushes with 1-wide paths between them, where a single stop
-touches up to four bushes: each stand is visited once instead of once per neighbouring bush.
+The dirt pillar it climbs is left standing — it is the way back up next run — and the block it breaks
+on the way down is picked back up.
 
-**It stays on the paths.** Leaf blocks are solid, so Baritone would happily route over a canopy to
-save a few steps; the apricorn leaves are added to its `blocksToAvoid` for the length of every run,
-so the pathfinder refuses to walk through or onto them. Planting and bone-mealing do the same.
-
-The one exception is a drop that has landed **on top** of a bush. There the canopy is unavoidable, so
-the bot is allowed to cross it for that one errand — but it still may not break or place a single
-block to get up there. It either finds a legitimate way (a slope, a wall, whatever your farm has) or
-reports `No way up to the apricorn on top of the bush at …` and leaves it.
+`#apricorn canopy false` switches to the old behaviour: the bot works only from the paths, and the
+apricorn leaves go into Baritone's `blocksToAvoid` so it never steps on a bush. That reaches less,
+but touches nothing. Planting and bone-mealing always work this way.
 
 **Colour filter.** By default every colour is picked. Pick one, a set, or all — handy for topping up
 a single colour without stripping the farm. Set it on the Harvest tab of the window (a
@@ -110,6 +107,8 @@ walked to or clicked, so the run only visits trees it actually wants.
 ```
 #apricorn                 start
 #apricorn stop|pause|resume
+#apricorn canopy true     work from on top of the bushes (the default)
+#apricorn canopy false    work from the paths, never stepping on a bush
 #apricorn tops true       after the patrol, also try high apricorns (towers up on dirt)
 #apricorn deposit true    afterwards, find a container and deposit the crop
 #apricorn chestradius 24  how far around the selection to look for that container (4-64)
