@@ -128,8 +128,6 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
      */
     private static final double LEASH_HORIZONTAL = 48.0;
     private static final double LEASH_VERTICAL = 24.0;
-    /** Horizontal distance (Chebyshev) an apricorn may be from a trunk to count as its bush. */
-    private static final int BUSH_RADIUS = 2;
 
     private final IBaritone baritone;
     private final IPlayerContext ctx;
@@ -140,19 +138,9 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
     private BlockPos selMin;
     private BlockPos selMax;
 
-    private static class Bush {
-        public final BlockPos log;
-        public final Set<BlockPos> matureBlocks = new HashSet<>();
-        public Bush(BlockPos log) { this.log = log; }
-    }
-    private final List<Bush> bushes = new ArrayList<>();
-    private int currentBushIndex = 0;
-    /**
-     * Stands already worked at <em>for the current bush</em>, so the bot moves round the bush
-     * instead of standing on the same spot twice. Cleared for every bush: farm paths are shared,
-     * and a stand that served one bush is very often the right stand for the next one too.
-     */
-    private final Set<BlockPos> usedStandsThisBush = new HashSet<>();
+    /** The path stands the sweep will visit, in walking order. */
+    private final List<BlockPos> harvestStands = new ArrayList<>();
+    private int standIndex;
     /** Stands Baritone could not reach at all. Those stay skipped for the whole run. */
     private final Set<BlockPos> unreachableStands = new HashSet<>();
     private boolean patrolDone;
@@ -309,9 +297,8 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         this.harvestTops = AddonSettings.isHarvestTops();
         this.depositEnabled = AddonSettings.isHarvestDeposit();
 
-        this.bushes.clear();
-        this.currentBushIndex = 0;
-        this.usedStandsThisBush.clear();
+        this.harvestStands.clear();
+        this.standIndex = 0;
         this.unreachableStands.clear();
         this.rescanned = false;
         this.patrolDone = false;
@@ -359,69 +346,13 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
             }
         }
 
-        // Bush clustering
-        List<BlockPos> logs = new ArrayList<>();
-        List<BlockPos> mature = new ArrayList<>();
-        for (int x = selMin.getX(); x <= selMax.getX(); x++) {
-            for (int z = selMin.getZ(); z <= selMax.getZ(); z++) {
-                for (int y = selMin.getY(); y <= selMax.getY(); y++) {
-                    BlockPos pos = new BlockPos(x, y, z);
-                    BlockState state = ctx.world().getBlockState(pos);
-                    if (ApricornBlocks.isApricornLog(state)) {
-                        logs.add(pos);
-                    }
-                    if (isWanted(state)) {
-                        mature.add(pos);
-                    }
-                }
-            }
-        }
-        
-        Map<BlockPos, Bush> bushMap = new HashMap<>();
-        for (BlockPos log : logs) {
-            BlockPos xzPos = new BlockPos(log.getX(), 0, log.getZ());
-            bushMap.putIfAbsent(xzPos, new Bush(log));
-        }
-        
-        for (BlockPos m : mature) {
-            Bush closest = null;
-            double minDist = Double.MAX_VALUE;
-            for (Bush b : bushMap.values()) {
-                double dist = Math.max(Math.abs(b.log.getX() - m.getX()), Math.abs(b.log.getZ() - m.getZ()));
-                if (dist <= BUSH_RADIUS && dist < minDist) {
-                    minDist = dist;
-                    closest = b;
-                }
-            }
-            if (closest != null) {
-                closest.matureBlocks.add(m);
-            } else {
-                // No trunk within reach of this apricorn (a stray tree whose log is outside the
-                // selection, or a shape the clustering did not expect). It still has to be picked,
-                // so it becomes a bush of its own instead of being silently dropped.
-                Bush own = bushMap.computeIfAbsent(new BlockPos(m.getX(), 0, m.getZ()),
-                        key -> new Bush(m));
-                own.matureBlocks.add(m);
-            }
-        }
-
-
-        for (Bush b : bushMap.values()) {
-            if (!b.matureBlocks.isEmpty()) {
-                this.bushes.add(b);
-            }
-        }
-        
-        this.bushes.sort((a, b) -> {
-            if (a.log.getZ() != b.log.getZ()) return Integer.compare(a.log.getZ(), b.log.getZ());
-            return Integer.compare(a.log.getX(), b.log.getX());
-        });
-        
-        this.patrolDone = this.bushes.isEmpty();
+        // Plan the sweep: which path stands can actually see an apricorn worth picking.
+        buildSweep();
+        this.patrolDone = this.harvestStands.isEmpty();
 
         this.running = true;
         logDirect("Apricorn harvesting started in selection " + selMin + " -> " + selMax
-                + ". Found " + this.bushes.size() + " bushes"
+                + ". " + this.harvestStands.size() + " stop(s) to visit"
                 + (AddonSettings.isEveryColourHarvested() ? "" : " (" + colourFilterText() + ")")
                 + ".");
     }
@@ -561,6 +492,15 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
 
     // ------------------------------------------------------------------ deposit
 
+    /**
+     * Walks the farm's paths and harvests everything in reach from each stop.
+     *
+     * <p>The farm this is built for is a grid of 3x3x3 bushes with 1-wide paths between them, so
+     * one path stand touches up to four bushes and every apricorn is in reach of some path. Working
+     * bush by bush therefore walks the same paths over and over; sweeping the paths instead visits
+     * each stand once, clicks everything the stand can see - whichever bush it belongs to - and
+     * collects the drops before moving on.
+     */
     private PathingCommand tickPatrol(boolean calcFailedIn) {
         boolean calcFailed = calcFailedIn;
         while (!patrolDone) {
@@ -571,143 +511,144 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                     return cmd;
                 }
                 localPickup = false;
-                nextBush();
+                nextStand();
                 continue;
             }
-            
-            if (currentBushIndex >= bushes.size()) {
-                // One re-scan before finishing: picks up apricorns that ripened during the run and
-                // any the first bush clustering did not claim.
+
+            if (standIndex >= harvestStands.size()) {
+                // One re-scan before finishing: catches apricorns that ripened during the run.
                 if (!rescanned && rescanForMissedApricorns()) {
                     continue;
                 }
                 patrolDone = true;
                 continue;
             }
-            
-            Bush bush = bushes.get(currentBushIndex);
 
-            List<BlockPos> remaining = new ArrayList<>();
-            for (BlockPos p : bush.matureBlocks) {
-                if (isWanted(ctx.world().getBlockState(p)) && clickAttempts.getOrDefault(p, 0) < MAX_CLICK_ATTEMPTS) {
-                    remaining.add(p);
-                }
-            }
-            
-            if (remaining.isEmpty()) {
-                localPickup = true;
-                localPickupDelay = DROP_SETTLE_TICKS;
-                localPickupX = bush.log.getX();
-                localPickupZ = bush.log.getZ();
-                skippedItems.clear();
+            BlockPos stand = harvestStands.get(standIndex);
+            if (unreachableStands.contains(stand) || !standHasWork(stand)) {
+                nextStand();
                 continue;
             }
-            
+
             if (towerPhase != TowerPhase.IDLE) {
                 PathingCommand cmd = tickTowering();
                 if (cmd != null) {
                     return cmd;
                 }
             }
-            
-            if (currentGoalStand != null && arrivedAt(currentGoalStand)) {
+
+            trackGoal(stand);
+
+            if (arrivedAt(stand)) {
                 fillClickQueueAtStop();
                 if (!clickQueue.isEmpty()) {
                     return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
                 }
-
-                if (harvestTops && towerPhase == TowerPhase.IDLE && !towerSkippedForRun) {
-                    if (hasHighApricorns(currentGoalStand)) {
-                        towerPhase = TowerPhase.EQUIP_DIRT;
-                        towerTicks = 0;
-                        PathingCommand cmd = tickTowering();
-                        if (cmd != null) return cmd;
+                if (harvestTops && towerPhase == TowerPhase.IDLE && !towerSkippedForRun
+                        && hasHighApricorns(stand)) {
+                    towerPhase = TowerPhase.EQUIP_DIRT;
+                    towerTicks = 0;
+                    PathingCommand cmd = tickTowering();
+                    if (cmd != null) {
+                        return cmd;
                     }
                 }
-                
-                // Done with this spot for this bush; the next bush may use it again.
-                usedStandsThisBush.add(currentGoalStand);
+                // Everything this stand can reach is picked: collect what fell, then move on.
+                localPickup = true;
+                localPickupDelay = DROP_SETTLE_TICKS;
+                localPickupX = stand.getX();
+                localPickupZ = stand.getZ();
+                skippedItems.clear();
                 harvestedAtThisStop = false;
-            }
-
-            BlockPos bestStand = null;
-            for (BlockPos target : remaining) {
-                BlockPos stand = bestStandFor(target);
-                if (stand != null) {
-                    bestStand = stand;
-                    break;
-                }
-            }
-
-
-            if (bestStand == null) {
-                logDirect("Cannot reach remaining blocks on bush at " + bush.log.getX() + "," + bush.log.getZ() + " - skipping.");
-                for (BlockPos p : remaining) {
-                    clickAttempts.put(p, MAX_CLICK_ATTEMPTS);
-                }
                 continue;
             }
-            
-            GoalBlock goal = new GoalBlock(bestStand);
-            trackGoal(bestStand);
-            
-            if (calcFailed || goalUnreachable(bestStand)) {
+
+            if (calcFailed || goalUnreachable(stand)) {
                 calcFailed = false;
-                logDirect("Cannot reach stand " + bestStand + " for bush at " + bush.log.getX() + "," + bush.log.getZ() + " - skipping stand.");
-                unreachableStands.add(bestStand);
+                logDirect("Cannot reach stand " + stand + " - skipping it.");
+                unreachableStands.add(stand);
+                nextStand();
                 continue;
             }
-            if (stuck(bestStand)) {
-                logDirect("Stalled near stand " + bestStand + ", skipping ahead.");
-                unreachableStands.add(bestStand);
+            if (stuck(stand)) {
+                logDirect("Stalled near stand " + stand + ", skipping ahead.");
+                unreachableStands.add(stand);
+                nextStand();
                 continue;
             }
-            return new PathingCommand(goal, PathingCommandType.SET_GOAL_AND_PATH);
+            return new PathingCommand(new GoalBlock(stand), PathingCommandType.SET_GOAL_AND_PATH);
         }
         return beginPickupPass();
     }
 
-    /** Moves on to the next bush, freeing the stands the finished one was using. */
-    private void nextBush() {
-        currentBushIndex++;
-        usedStandsThisBush.clear();
+    /** Moves to the next stand of the sweep. */
+    private void nextStand() {
+        standIndex++;
         currentGoalStand = null;
-        if (currentBushIndex >= bushes.size() && rescanned) {
-            patrolDone = true;
-        }
     }
 
-    /**
-     * Re-scans the selection once the bush list is exhausted. Anything still mature that has not
-     * used up its click attempts becomes a fresh bush, so apricorns that ripened during the run
-     * (or that the first clustering missed) are picked instead of left standing.
-     *
-     * @return true when new work was found and the patrol should carry on
-     */
-    private boolean rescanForMissedApricorns() {
-        rescanned = true;
-        Map<BlockPos, Bush> extra = new HashMap<>();
-        for (int x = selMin.getX(); x <= selMax.getX(); x++) {
-            for (int z = selMin.getZ(); z <= selMax.getZ(); z++) {
+    /** True when the stand can still reach an apricorn worth clicking. */
+    private boolean standHasWork(BlockPos stand) {
+        Vec3 eye = new Vec3(stand.getX() + 0.5, stand.getY() + 1.62, stand.getZ() + 0.5);
+        int r = (int) Math.ceil(Math.sqrt(reachSq()));
+        int minX = Math.max(selMin.getX(), stand.getX() - r);
+        int maxX = Math.min(selMax.getX(), stand.getX() + r);
+        int minZ = Math.max(selMin.getZ(), stand.getZ() - r);
+        int maxZ = Math.min(selMax.getZ(), stand.getZ() + r);
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
                 for (int y = selMin.getY(); y <= selMax.getY(); y++) {
                     BlockPos pos = new BlockPos(x, y, z);
-                    if (!isWanted(ctx.world().getBlockState(pos))
-                            || clickAttempts.getOrDefault(pos, 0) >= MAX_CLICK_ATTEMPTS) {
+                    if (clickAttempts.getOrDefault(pos, 0) >= MAX_CLICK_ATTEMPTS) {
                         continue;
                     }
-                    // Group by column so one walk picks everything standing together.
-                    BlockPos key = new BlockPos(x / (BUSH_RADIUS + 1), 0, z / (BUSH_RADIUS + 1));
-                    extra.computeIfAbsent(key, k -> new Bush(pos)).matureBlocks.add(pos);
+                    BlockState state = ctx.world().getBlockState(pos);
+                    if (isWanted(state) && eye.distanceToSqr(nearestPointOnBlock(eye, pos)) <= reachSq()) {
+                        return true;
+                    }
                 }
             }
         }
-        if (extra.isEmpty()) {
+        return false;
+    }
+
+    /**
+     * Orders the path stands into a sweep: row by row, alternating direction, so the bot walks the
+     * farm like a lawnmower instead of criss-crossing it.
+     */
+    private void buildSweep() {
+        harvestStands.clear();
+        List<BlockPos> stands = new ArrayList<>(pathStands);
+        stands.sort((a, b) -> {
+            if (a.getZ() != b.getZ()) {
+                return Integer.compare(a.getZ(), b.getZ());
+            }
+            boolean reverse = ((a.getZ() - selMin.getZ()) & 1) == 1;
+            return reverse ? Integer.compare(b.getX(), a.getX()) : Integer.compare(a.getX(), b.getX());
+        });
+        for (BlockPos stand : stands) {
+            if (standHasWork(stand)) {
+                harvestStands.add(stand);
+            }
+        }
+        standIndex = 0;
+    }
+
+    /**
+     * Re-plans the sweep once every stand has been visited, so apricorns that ripened during the
+     * run - a long harvest on a big farm easily outlasts a growth stage - are picked instead of
+     * left standing.
+     *
+     * @return true when there is more to do and the sweep should carry on
+     */
+    private boolean rescanForMissedApricorns() {
+        rescanned = true;
+        currentGoalStand = null;
+        buildSweep();
+        if (harvestStands.isEmpty()) {
             return false;
         }
-        bushes.addAll(extra.values());
-        usedStandsThisBush.clear();
-        currentGoalStand = null;
-        logDirect("Re-scan found " + extra.size() + " more spot(s) with ripe apricorns.");
+        logDirect("Re-scan found " + harvestStands.size() + " more stop(s) with ripe apricorns.");
         return true;
     }
 
@@ -1328,15 +1269,15 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
     }
 
     /**
-     * The path stand closest to the given target from which it can be harvested, or null.
-     * Stands already used for the current bush and stands Baritone could not reach are skipped -
-     * but the "used" set is per bush, so neighbouring bushes can share the same piece of path.
+     * The path stand closest to the given target from which it can be harvested, or null. Stands
+     * Baritone could not reach are skipped. Used by the pickup and deposit passes; the harvest
+     * sweep walks {@link #harvestStands} instead.
      */
     private BlockPos bestStandFor(BlockPos target) {
         BlockPos best = null;
         double bestDistSq = Double.MAX_VALUE;
         for (BlockPos s : pathStands) {
-            if (usedStandsThisBush.contains(s) || unreachableStands.contains(s)) continue;
+            if (unreachableStands.contains(s)) continue;
             if (Math.abs(s.getX() - target.getX()) > 4 || Math.abs(s.getZ() - target.getZ()) > 4) {
                 continue;
             }

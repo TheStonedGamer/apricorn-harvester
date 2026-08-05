@@ -56,10 +56,13 @@ addon without them. Drop all three jars into `mods/`.
 
 ## Harvesting — `#apricorn`
 
-The bot walks the selection bush by bush, standing only on columns with a walkable, non-tree surface
-(the farm paths). At each stop it scans everything within block reach and right-clicks every mature
-apricorn, then walks around the bush to pick up what fell before moving on. Apricorns it cannot reach
-from a path are left standing.
+The bot **sweeps the farm paths**: it lists every column with a walkable, non-tree surface, keeps the
+ones that can see a ripe apricorn, and walks them row by row like a lawnmower. At each stop it
+right-clicks everything within block reach — whichever bush it belongs to — then collects what fell
+before moving on. Apricorns no path can reach are left standing.
+
+This suits the usual layout of 3×3×3 bushes with 1-wide paths between them, where a single stop
+touches up to four bushes: each stand is visited once instead of once per neighbouring bush.
 
 **Colour filter.** By default every colour is picked. Pick one, a set, or all — handy for topping up
 a single colour without stripping the farm. Set it on the Harvest tab of the settings screen (a
