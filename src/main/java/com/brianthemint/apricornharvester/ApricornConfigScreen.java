@@ -31,6 +31,7 @@ public class ApricornConfigScreen extends Screen {
     private static final int SIDEBAR_W = 96;
 
     private enum Tab {
+        FARMS("Farms"),
         HARVEST("Harvest"),
         PLANT("Planting"),
         BONEMEAL("Bone meal"),
@@ -88,6 +89,7 @@ public class ApricornConfigScreen extends Screen {
         int w = contentW();
 
         switch (tab) {
+            case FARMS -> initFarms(x, y, w);
             case HARVEST -> initHarvest(x, y, w);
             case PLANT -> initPlant(x, y, w);
             case BONEMEAL -> initBonemeal(x, y, w);
@@ -168,6 +170,61 @@ public class ApricornConfigScreen extends Screen {
                         stop.run();
                     }
                 }, false));
+    }
+
+    /** Farms tab: pick the farm the jobs work on, survey a new one, or re-survey this one. */
+    private void initFarms(int x, int y, int w) {
+        List<String> farms = FarmMap.names();
+        String selected = FarmSelection.currentName();
+        if (!farms.isEmpty()) {
+            FlatUI.Dropdown<String> farmDropdown = new FlatUI.Dropdown<>(x + w - 170, y, 170, farms,
+                    farms.contains(selected) ? selected : farms.get(0), name -> name,
+                    name -> {
+                        FarmSelection.select(name);
+                        FarmSelection.applyToBaritone(context.baritone());
+                        rebuildWidgets();
+                    });
+            dropdowns.add(farmDropdown);
+        }
+
+        widgets.add(new FlatUI.Button(x, y + 34, 120, 20,
+                () -> context.mapper() != null && context.mapper().isRunning() ? "Mapping..." : "Map selection",
+                () -> {
+                    if (context.mapper() == null || context.mapper().isRunning()) {
+                        return;
+                    }
+                    var sel = context.baritone().getSelectionManager().getLastSelection();
+                    if (sel == null) {
+                        Helper.HELPER.logDirect("No selection - mark the farm with #sel pos1/pos2 first.");
+                        return;
+                    }
+                    // Name it after the selected farm when there is one, otherwise "farm1", ...
+                    String name = FarmSelection.currentName();
+                    if (name.isEmpty()) {
+                        int n = 1;
+                        while (FarmMap.exists("farm" + n)) {
+                            n++;
+                        }
+                        name = "farm" + n;
+                    }
+                    onClose();
+                    context.mapper().start(name, sel.min(), sel.max());
+                }, true));
+
+        widgets.add(new FlatUI.Button(x + 128, y + 34, 90, 20, () -> "Re-map", () -> {
+            FarmMap farm = FarmSelection.current();
+            if (farm == null || context.mapper() == null || context.mapper().isRunning()) {
+                return;
+            }
+            onClose();
+            context.mapper().start(farm.name, farm.min, farm.max);
+        }, false));
+
+        widgets.add(new FlatUI.Button(x + 226, y + 34, 64, 20, () -> "Cancel", () -> {
+            if (context.mapper() != null && context.mapper().isRunning()) {
+                context.mapper().stop();
+            }
+        }, false));
     }
 
     private void initHarvest(int x, int y, int w) {
@@ -424,6 +481,25 @@ public class ApricornConfigScreen extends Screen {
         int x = contentX();
         int y = top() + 42;
         switch (tab) {
+            case FARMS -> {
+                FlatUI.label(g, "Farm", x, y + 6);
+                FarmMap farm = FarmSelection.current();
+                if (context.mapper() != null && context.mapper().isRunning()) {
+                    g.drawString(this.font, context.mapper().status(), x, y + 66, FlatUI.ACCENT, false);
+                } else if (farm == null) {
+                    g.drawString(this.font, "No farm selected.", x, y + 66, FlatUI.TEXT_DIM, false);
+                } else {
+                    g.drawString(this.font, farm.summary(), x, y + 66,
+                            farm.isMapped() ? FlatUI.TEXT : FlatUI.BAD, false);
+                    g.drawString(this.font, "bounds " + farm.min.getX() + "," + farm.min.getZ()
+                                    + " -> " + farm.max.getX() + "," + farm.max.getZ(),
+                            x, y + 78, FlatUI.TEXT_DIM, false);
+                }
+                note(g, x, y + 104,
+                        "Mapping walks the farm once so every chunk loads, recording the",
+                        "paths, trees, colours and containers. Harvesting then plans over",
+                        "the whole field instead of only the part you can see.");
+            }
             case HARVEST -> {
                 FlatUI.label(g, "Reach for high apricorns (tops)", x, y + 4);
                 FlatUI.label(g, "Deposit into a chest afterwards", x, y + 34);

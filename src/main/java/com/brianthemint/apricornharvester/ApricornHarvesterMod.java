@@ -56,8 +56,11 @@ public final class ApricornHarvesterMod {
             PokeballFactory pokeballFactory = new PokeballFactory(baritone, process);
             OreMineController oreController = new OreMineController(baritone);
             ApricornHunter hunter = new ApricornHunter(baritone);
+            FarmMapper mapper = new FarmMapper(baritone);
             AddonContext context = new AddonContext(baritone, process, plantProcess,
-                    bonemealProcess, pokeballFactory, oreController, hunter);
+                    bonemealProcess, pokeballFactory, oreController, hunter, mapper);
+            // Bring back the farm that was selected last session, if it still exists.
+            FarmSelection.restore();
             ApricornKeybinds.setContext(context);
             baritone.getCommandManager().getRegistry().register(new ApricornHarvestCommand(process));
             baritone.getCommandManager().getRegistry().register(new ApricornPlantCommand(baritone, plantProcess));
@@ -66,6 +69,7 @@ public final class ApricornHarvesterMod {
             baritone.getCommandManager().getRegistry().register(new TaskLocationCommand(baritone));
             baritone.getCommandManager().getRegistry().register(new OreMineCommand(oreController));
             baritone.getCommandManager().getRegistry().register(new ApricornHuntCommand(hunter));
+            baritone.getCommandManager().getRegistry().register(new FarmCommand(baritone, mapper));
             baritone.getCommandManager().getRegistry().register(new ApricornHelpCommand());
             baritone.getCommandManager().getRegistry().register(new ApricornConfigCommand(context));
             baritone.getCommandManager().getRegistry().register(new SelectionSaveCommand(baritone));

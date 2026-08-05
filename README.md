@@ -14,6 +14,9 @@ every job except mining, so no leaf, log or build of yours is ever broken.
 | Plant | `#plant` | Plants a grid with a configurable spacing, wall clearance and **one apricorn colour per row** |
 | Grow | `#bonemeal` | Bone-meals every sapling in the selection until it becomes a tree |
 | Craft | `#pokeball` | Full pipeline: mines the ore and stone, harvests apricorns, smelts, crafts bases, lids and balls |
+| Map | `#farm` | Surveys a field once so runs can plan over the whole farm, not just the loaded part |
+| Ore | `#ore` | Mines a single ore (platinum, silver, …) on its own, out and back |
+| Hunt | `#hunt` | Finds wild apricorn trees, defaulting to the colours you have none of |
 | Areas | `#loc` | Remembers a saved selection **and** a travel command (`/home`, `/warp`, `/rtp`) per job |
 | Settings | `#config` | One screen for every setting, persisted to disk |
 | Help | `#ah` | The addon's own command overview, in chat or as a screen |
@@ -44,15 +47,40 @@ addon without them. Drop all three jars into `mods/`.
 ```
 #sel pos1                 stand at one corner of the field
 #sel pos2                 ... and the opposite corner (ground level to tree top)
-#save myfarm              remember it by name
-#loc harvest sel myfarm   use it for the harvest job
-#loc harvest cmd home farm   (optional) how to teleport there
+#farm map myfarm          walk the farm once and record it
+#loc harvest cmd home farm   (optional) how to teleport back to it
 
 #plant                    lay out the grid, one colour per row
 #bonemeal                 grow every sapling into a tree
 #apricorn                 harvest the ripe apricorns
 #pokeball plan            see what it would take to craft balls
 ```
+
+## Farms — `#farm`
+
+Minecraft only gives the client blocks in **loaded chunks**, so a farm bigger than your render
+distance cannot be planned from where you stand — the far half reads as empty air, and a harvest
+quietly stops at the edge of what happened to be loaded.
+
+`#farm map <name>` fixes that by surveying the field once: the bot walks a lawnmower route across the
+selection so every chunk loads, recording the path stands, the trees and their colours, and the
+containers. The map is saved to `.minecraft/baritone/apricorn-farms/` and reused, so later runs plan
+over the whole farm without walking it again.
+
+```
+#farm                     list the farms you have surveyed
+#farm map myfarm          survey the current selection under that name
+#farm remap               survey the selected farm again
+#farm select myfarm       work on that farm (also sets the selection)
+#farm info [name]         what a survey found
+#farm delete myfarm       forget a farm
+#farm stop | status       stop a survey, or see how far it has got
+```
+
+Once a farm is selected, `#apricorn` seeds its plan from the map — stands in unloaded chunks are kept
+and checked on arrival instead of being dropped — and the selection is set to the farm's bounds, so
+the other commands need no `#sel` step. The **Farms** tab of the settings screen does the same with a
+dropdown and Map / Re-map / Cancel buttons.
 
 ## Harvesting — `#apricorn`
 

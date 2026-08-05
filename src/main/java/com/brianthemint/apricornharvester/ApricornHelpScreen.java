@@ -38,10 +38,13 @@ public class ApricornHelpScreen extends Screen {
     public ApricornHelpScreen() {
         super(Component.literal("Apricorn Harvester Help"));
         topics.add(new Topic("Workflow", ApricornHelpCommand.WORKFLOW));
+        topics.add(new Topic("Farms", ApricornHelpCommand.FARMS));
         topics.add(new Topic("Harvest", ApricornHelpCommand.HARVEST));
         topics.add(new Topic("Plant", ApricornHelpCommand.PLANT));
         topics.add(new Topic("Bone meal", ApricornHelpCommand.BONEMEAL));
         topics.add(new Topic("Poke Balls", ApricornHelpCommand.POKEBALL));
+        topics.add(new Topic("Ore", ApricornHelpCommand.ORE));
+        topics.add(new Topic("Hunt", ApricornHelpCommand.HUNT));
         topics.add(new Topic("Task areas", ApricornHelpCommand.AREAS));
         topics.add(new Topic("Hotkeys", ApricornHelpCommand.KEYS));
     }

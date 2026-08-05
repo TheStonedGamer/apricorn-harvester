@@ -19,10 +19,13 @@ public final class AddonContext {
     private final PokeballFactory pokeball;
     private final OreMineController ore;
     private final ApricornHunter hunter;
+    private final FarmMapper mapper;
 
     public AddonContext(IBaritone baritone, ApricornHarvestProcess harvest,
                         ApricornPlantProcess plant, ApricornBonemealProcess bonemeal,
-                        PokeballFactory pokeball, OreMineController ore, ApricornHunter hunter) {
+                        PokeballFactory pokeball, OreMineController ore, ApricornHunter hunter,
+                        FarmMapper mapper) {
+        this.mapper = mapper;
         this.baritone = baritone;
         this.harvest = harvest;
         this.plant = plant;
@@ -40,6 +43,10 @@ public final class AddonContext {
         return hunter;
     }
 
+    public FarmMapper mapper() {
+        return mapper;
+    }
+
     /** Drives the jobs that are plain tick controllers rather than Baritone processes. */
     public void tickControllers() {
         if (pokeball != null) {
@@ -50,6 +57,9 @@ public final class AddonContext {
         }
         if (hunter != null) {
             hunter.tick();
+        }
+        if (mapper != null) {
+            mapper.tick();
         }
     }
 
@@ -89,6 +99,7 @@ public final class AddonContext {
                 || (bonemeal != null && bonemeal.isRunning())
                 || (pokeball != null && pokeball.isRunning())
                 || (ore != null && ore.isRunning())
-                || (hunter != null && hunter.isRunning());
+                || (hunter != null && hunter.isRunning())
+                || (mapper != null && mapper.isRunning());
     }
 }

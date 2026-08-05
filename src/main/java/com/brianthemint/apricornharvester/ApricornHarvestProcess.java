@@ -359,12 +359,24 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         // (settings are read live by the pathfinder, so every path respects it).
         this.previousAllowBreak = BaritoneAPI.getSettings().allowBreak.value;
         BaritoneAPI.getSettings().allowBreak.value = false;
-        // Precalculate path stands
+        // Precalculate path stands. A mapped farm contributes the stands it recorded while walking
+        // the field, so parts of the farm that are not loaded right now are still planned for -
+        // the client reads unloaded chunks as air, which is what used to make a big farm stop at
+        // the edge of the render distance.
         this.pathStands.clear();
+        FarmMap farm = FarmSelection.current();
+        if (farm != null && farm.isMapped() && coversSelection(farm)) {
+            for (BlockPos stand : farm.stands) {
+                if (withinSelection(stand)) {
+                    pathStands.add(stand);
+                }
+            }
+            logDirect("Using the map of '" + farm.name + "': " + pathStands.size() + " known stands.");
+        }
         for (int x = selMin.getX(); x <= selMax.getX(); x++) {
             for (int z = selMin.getZ(); z <= selMax.getZ(); z++) {
                 BlockPos stand = pathStand(x, z);
-                if (stand != null) {
+                if (stand != null && !pathStands.contains(stand)) {
                     pathStands.add(stand);
                 }
             }
@@ -619,14 +631,54 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         return beginPickupPass();
     }
 
+    /** True when the farm map recorded apricorn leaves within reach of this stand. */
+    private boolean mapHasTreesNear(BlockPos stand) {
+        FarmMap farm = FarmSelection.current();
+        if (farm == null || farm.trees.isEmpty()) {
+            // No map to go on: keep the stand and let the visit decide.
+            return true;
+        }
+        int reach = (int) Math.ceil(Math.sqrt(reachSq()));
+        for (BlockPos tree : farm.trees) {
+            if (Math.abs(tree.getX() - stand.getX()) <= reach
+                    && Math.abs(tree.getZ() - stand.getZ()) <= reach
+                    && Math.abs(tree.getY() - stand.getY()) <= reach) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** True when the mapped farm covers the selection being harvested. */
+    private boolean coversSelection(FarmMap farm) {
+        return farm.min.getX() <= selMax.getX() && farm.max.getX() >= selMin.getX()
+                && farm.min.getZ() <= selMax.getZ() && farm.max.getZ() >= selMin.getZ();
+    }
+
+    private boolean withinSelection(BlockPos pos) {
+        return pos.getX() >= selMin.getX() && pos.getX() <= selMax.getX()
+                && pos.getZ() >= selMin.getZ() && pos.getZ() <= selMax.getZ()
+                && pos.getY() >= selMin.getY() - STAND_SEARCH_DEPTH && pos.getY() <= selMax.getY() + 2;
+    }
+
     /** Moves to the next stand of the sweep. */
     private void nextStand() {
         standIndex++;
         currentGoalStand = null;
     }
 
-    /** True when the stand can still reach an apricorn worth clicking. */
+    /**
+     * True when the stand can still reach an apricorn worth clicking.
+     *
+     * <p>A stand in an unloaded chunk cannot be judged - the client reads it as air - so if the
+     * farm map says there are trees beside it, it is kept and checked again on arrival. Without
+     * that, every stand beyond the render distance would be dropped from the sweep, which is
+     * exactly how a large farm ended up half harvested.
+     */
     private boolean standHasWork(BlockPos stand) {
+        if (!ctx.world().hasChunkAt(stand)) {
+            return mapHasTreesNear(stand);
+        }
         Vec3 eye = new Vec3(stand.getX() + 0.5, stand.getY() + 1.62, stand.getZ() + 0.5);
         int r = (int) Math.ceil(Math.sqrt(reachSq()));
         int minX = Math.max(selMin.getX(), stand.getX() - r);
