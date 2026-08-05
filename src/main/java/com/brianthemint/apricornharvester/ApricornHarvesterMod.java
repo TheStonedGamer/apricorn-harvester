@@ -54,14 +54,18 @@ public final class ApricornHarvesterMod {
             ApricornBonemealProcess bonemealProcess = new ApricornBonemealProcess(baritone);
             baritone.getPathingControlManager().registerProcess(bonemealProcess);
             PokeballFactory pokeballFactory = new PokeballFactory(baritone, process);
+            OreMineController oreController = new OreMineController(baritone);
+            ApricornHunter hunter = new ApricornHunter(baritone);
             AddonContext context = new AddonContext(baritone, process, plantProcess,
-                    bonemealProcess, pokeballFactory);
+                    bonemealProcess, pokeballFactory, oreController, hunter);
             ApricornKeybinds.setContext(context);
             baritone.getCommandManager().getRegistry().register(new ApricornHarvestCommand(process));
             baritone.getCommandManager().getRegistry().register(new ApricornPlantCommand(baritone, plantProcess));
             baritone.getCommandManager().getRegistry().register(new ApricornBonemealCommand(bonemealProcess));
             baritone.getCommandManager().getRegistry().register(new PokeballCommand(pokeballFactory));
             baritone.getCommandManager().getRegistry().register(new TaskLocationCommand(baritone));
+            baritone.getCommandManager().getRegistry().register(new OreMineCommand(oreController));
+            baritone.getCommandManager().getRegistry().register(new ApricornHuntCommand(hunter));
             baritone.getCommandManager().getRegistry().register(new ApricornHelpCommand());
             baritone.getCommandManager().getRegistry().register(new ApricornConfigCommand(context));
             baritone.getCommandManager().getRegistry().register(new SelectionSaveCommand(baritone));

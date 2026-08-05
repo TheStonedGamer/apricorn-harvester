@@ -11,6 +11,7 @@ import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 
 
@@ -33,6 +34,7 @@ public class ApricornConfigScreen extends Screen {
         HARVEST("Harvest"),
         PLANT("Planting"),
         BONEMEAL("Bone meal"),
+        MINE("Mine & hunt"),
         AREAS("Task areas");
 
         private final String label;
@@ -45,6 +47,10 @@ public class ApricornConfigScreen extends Screen {
     private final AddonContext context;
 
     private Tab tab = Tab.HARVEST;
+    /** Mine &amp; hunt tab state; kept on the screen because it is per-run, not a saved setting. */
+    private int oreIndex;
+    private int oreAmount = 32;
+    private int huntHops = 10;
     private final List<FlatUI.Widget> widgets = new ArrayList<>();
     private final List<FlatUI.Dropdown<?>> dropdowns = new ArrayList<>();
     private final List<EditBox> boxes = new ArrayList<>();
@@ -85,6 +91,7 @@ public class ApricornConfigScreen extends Screen {
             case HARVEST -> initHarvest(x, y, w);
             case PLANT -> initPlant(x, y, w);
             case BONEMEAL -> initBonemeal(x, y, w);
+            case MINE -> initMineHunt(x, y, w);
             case AREAS -> initAreas(x, y, w);
         }
 
@@ -234,6 +241,54 @@ public class ApricornConfigScreen extends Screen {
     private void initBonemeal(int x, int y, int w) {
         widgets.add(new FlatUI.Stepper(x + w - 96, y, 96, AddonSettings::getBonemealMax,
                 AddonSettings::setBonemealMax, "max"));
+    }
+
+    /** Standalone ore mining and the apricorn hunt: pick, then Run. */
+    private void initMineHunt(int x, int y, int w) {
+        List<OreMineController.Ore> ores = OreMineController.Ore.available();
+        FlatUI.Dropdown<OreMineController.Ore> oreDropdown = new FlatUI.Dropdown<>(x + w - 150, y, 150,
+                ores, ores.isEmpty() ? null : ores.get(Math.min(oreIndex, ores.size() - 1)),
+                OreMineController.Ore::label,
+                ore -> oreIndex = ores.indexOf(ore));
+        dropdowns.add(oreDropdown);
+
+        widgets.add(new FlatUI.Stepper(x + w - 96, y + 28, 96, () -> oreAmount,
+                value -> oreAmount = Math.max(1, Math.min(2304, value)), "ore"));
+
+        widgets.add(new FlatUI.Button(x, y + 56, 110, 20,
+                () -> context.ore() != null && context.ore().isRunning() ? "Mining..." : "Mine ore",
+                () -> {
+                    if (context.ore() == null || context.ore().isRunning() || ores.isEmpty()) {
+                        return;
+                    }
+                    onClose();
+                    context.ore().start(oreDropdown.selected(), oreAmount);
+                }, true));
+        widgets.add(new FlatUI.Button(x + 118, y + 56, 90, 20, () -> "Cancel", () -> {
+            if (context.ore() != null && context.ore().isRunning()) {
+                context.ore().stop();
+            }
+        }, false));
+
+        // --- apricorn hunt
+        widgets.add(new FlatUI.Stepper(x + w - 96, y + 100, 96, () -> huntHops,
+                value -> huntHops = Math.max(0, Math.min(100, value)), "hops"));
+        widgets.add(new FlatUI.Button(x, y + 128, 110, 20,
+                () -> context.hunter() != null && context.hunter().isRunning() ? "Hunting..." : "Hunt colours",
+                () -> {
+                    if (context.hunter() == null || context.hunter().isRunning()) {
+                        return;
+                    }
+                    onClose();
+                    context.hunter().start(EnumSet.noneOf(ApricornType.class), huntHops);
+                }, true));
+        widgets.add(new FlatUI.Button(x + 118, y + 128, 90, 20, () -> "Scan here",
+                ApricornHunter::report, false));
+        widgets.add(new FlatUI.Button(x + 214, y + 128, 76, 20, () -> "Cancel", () -> {
+            if (context.hunter() != null && context.hunter().isRunning()) {
+                context.hunter().stop();
+            }
+        }, false));
     }
 
     private void initAreas(int x, int y, int w) {
@@ -392,6 +447,15 @@ public class ApricornConfigScreen extends Screen {
                 FlatUI.label(g, "Bone meals per sapling", x, y + 4);
                 note(g, x, y + 30, "How often one sapling is bone-mealed before the bot gives",
                         "up on it and moves to the next.");
+            }
+            case MINE -> {
+                FlatUI.label(g, "Ore", x, y + 6);
+                FlatUI.label(g, "Amount", x, y + 34);
+                note(g, x, y + 84, "Mines one ore on its own: out with the mine command, back",
+                        "with the crafting base's. Same as #ore platinum 32.");
+                FlatUI.label(g, "Hunt hops", x, y + 106);
+                note(g, x, y + 154, "The hunt looks for apricorn colours you have none of, hopping",
+                        "with the hunt command until it finds one, then paths to it.");
             }
             case AREAS -> {
                 FlatUI.label(g, "Task", x, y - 10);

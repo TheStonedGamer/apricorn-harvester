@@ -63,11 +63,9 @@ public final class ApricornKeybinds {
         if (context == null) {
             return;
         }
-        // The Poke Ball factory is a plain tick controller (it hands control to Baritone's miner
-        // for the mining steps), so it is driven from here rather than from a Baritone process.
-        if (context.pokeball() != null) {
-            context.pokeball().tick();
-        }
+        // The factory, the ore miner and the hunter are plain tick controllers (they hand control
+        // to Baritone's own processes), so they are driven from here.
+        context.tickControllers();
 
         boolean plantPressed = false;
         while (OPEN_PLANT_GUI.consumeClick()) {

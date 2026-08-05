@@ -33,6 +33,7 @@ public final class TaskLocations {
         PLANT("plant", "Planting"),
         BONEMEAL("bonemeal", "Bone-mealing"),
         MINE("mine", "Mining"),
+        HUNT("hunt", "Apricorn hunting"),
         CRAFT("craft", "Crafting base");
 
         private final String key;
@@ -81,6 +82,7 @@ public final class TaskLocations {
         }
         // Sensible starting point for the two the Poke Ball factory always uses.
         COMMANDS.put(Task.MINE, "rtp");
+        COMMANDS.put(Task.HUNT, "rtp");
         COMMANDS.put(Task.CRAFT, "home home2");
     }
 
