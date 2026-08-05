@@ -32,7 +32,7 @@ import java.util.function.BooleanSupplier;
  */
 public class ApricornGui extends Screen {
 
-    private static final int PANEL_W = 460;
+    private static final int PANEL_W = 520;
     private static final int PANEL_H = 336;
     /** Height of one module row on the schedule tab. */
     private static final int MODULE_H = 18;
@@ -41,6 +41,9 @@ public class ApricornGui extends Screen {
     private static final int ROW_H = 22;
     private static final int ROWS_VISIBLE = 7;
     private static final int FARM_ROWS_VISIBLE = 6;
+    /** Column starts on the Task areas tab: the labels need room for "Apricorn harvesting". */
+    private static final int AREA_COL = 116;
+    private static final int COMMAND_COL = 218;
 
     /** The tabs, in sidebar order. */
     public enum Tab {
@@ -723,12 +726,13 @@ public class ApricornGui extends Screen {
         int rowY = y;
         for (TaskLocations.Task task : TaskLocations.Task.values()) {
             String current = TaskLocations.getSelection(task);
-            dropdowns.add(new FlatUI.Dropdown<>(x + 62, rowY, 96, areas,
+            dropdowns.add(new FlatUI.Dropdown<>(x + AREA_COL, rowY, 96, areas,
                     current.isEmpty() || !areas.contains(current) ? areas.get(0) : current,
                     name -> name,
                     name -> TaskLocations.setSelection(task, "(none)".equals(name) ? "" : name)));
 
-            EditBox commandBox = new EditBox(this.font, x + 166, rowY + 1, w - 200, 18,
+            EditBox commandBox = new EditBox(this.font, x + COMMAND_COL, rowY + 1,
+                    w - COMMAND_COL - 38, 18,
                     Component.literal(task.label() + " command"));
             commandBox.setValue(TaskLocations.getCommand(task));
             commandBox.setMaxLength(64);
@@ -736,7 +740,7 @@ public class ApricornGui extends Screen {
             addWidget(commandBox);
             boxes.add(commandBox);
 
-            widgets.add(new FlatUI.Button(x + w - 30, rowY + 1, 30, 18, () -> "Go", () -> {
+            widgets.add(new FlatUI.Button(x + w - 32, rowY + 1, 32, 18, () -> "Go", () -> {
                 boolean travelled = TaskLocations.sendTravel(task);
                 boolean applied = TaskLocations.applySelection(context.baritone(), task);
                 if (!travelled && !applied) {
@@ -1117,11 +1121,12 @@ public class ApricornGui extends Screen {
             }
             case AREAS -> {
                 FlatUI.label(g, "Task", x, y - 10);
-                FlatUI.label(g, "Area", x + 62, y - 10);
-                FlatUI.label(g, "Travel command", x + 166, y - 10);
+                FlatUI.label(g, "Area", x + AREA_COL, y - 10);
+                FlatUI.label(g, "Travel command", x + COMMAND_COL, y - 10);
                 int rowY = y;
                 for (TaskLocations.Task task : TaskLocations.Task.values()) {
-                    g.drawString(this.font, task.label(), x, rowY + 6, FlatUI.TEXT, false);
+                    g.drawString(this.font, fit(task.label(), AREA_COL - 8), x, rowY + 6,
+                            FlatUI.TEXT, false);
                     rowY += 24;
                 }
                 FlatUI.label(g, "Homes the deposit job visits, comma separated", x, rowY + 3);

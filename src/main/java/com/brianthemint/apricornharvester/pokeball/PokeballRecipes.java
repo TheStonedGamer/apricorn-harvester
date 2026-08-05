@@ -327,7 +327,7 @@ public final class PokeballRecipes {
             if (out.isEmpty()) {
                 return false;
             }
-            Map<Item, Integer> perCraft = ingredientCounts(holder);
+            Map<Item, Integer> perCraft = ingredientCounts(holder, virtual);
             if (perCraft == null) {
                 return false;
             }
@@ -445,6 +445,17 @@ public final class PokeballRecipes {
      * for Pixelmon's recipes is the intended one).
      */
     private static Map<Item, Integer> ingredientCounts(RecipeHolder<?> holder) {
+        return ingredientCounts(holder, Map.of());
+    }
+
+    /**
+     * Same, but choosing the option the player already has where an ingredient accepts several.
+     * Tags such as {@code c:ingots/platinum} usually hold one item, but where they hold more -
+     * planks, wooden rods, stone buttons - using what is in the inventory beats making something
+     * new out of habit.
+     */
+    private static Map<Item, Integer> ingredientCounts(RecipeHolder<?> holder,
+                                                       Map<Item, Integer> have) {
         Map<Item, Integer> counts = new LinkedHashMap<>();
         for (Ingredient ingredient : holder.value().getIngredients()) {
             if (ingredient.isEmpty()) {
@@ -454,7 +465,16 @@ public final class PokeballRecipes {
             if (options.length == 0) {
                 return null;
             }
-            counts.merge(options[0].getItem(), 1, Integer::sum);
+            Item chosen = options[0].getItem();
+            int best = have.getOrDefault(chosen, 0);
+            for (ItemStack option : options) {
+                int stock = have.getOrDefault(option.getItem(), 0);
+                if (stock > best) {
+                    best = stock;
+                    chosen = option.getItem();
+                }
+            }
+            counts.merge(chosen, 1, Integer::sum);
         }
         return counts.isEmpty() ? null : counts;
     }
