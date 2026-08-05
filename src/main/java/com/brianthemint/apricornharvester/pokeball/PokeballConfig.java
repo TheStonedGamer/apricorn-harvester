@@ -14,6 +14,11 @@ public final class PokeballConfig {
     /** Recipe id of the ball to make, e.g. {@code pixelmon:pokeball/ball/great_ball}. */
     private static String ballRecipeId = "";
     private static int count = 16;
+    /**
+     * Make as many as the materials allow rather than a fixed number: after a harvest you rarely
+     * know how many apricorns came back, and "use them up" is the usual intent.
+     */
+    private static boolean craftUntilOut;
     /** Item burned in the furnaces. */
     private static Item fuel = Items.COAL;
     /** Blocks searched around the player for furnaces and crafting tables. */
@@ -30,6 +35,14 @@ public final class PokeballConfig {
 
     public static void setBallRecipeId(String id) {
         ballRecipeId = id == null ? "" : id;
+    }
+
+    public static boolean isCraftUntilOut() {
+        return craftUntilOut;
+    }
+
+    public static void setCraftUntilOut(boolean value) {
+        craftUntilOut = value;
     }
 
     public static int getCount() {

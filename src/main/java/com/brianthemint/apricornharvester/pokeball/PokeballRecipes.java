@@ -147,6 +147,52 @@ public final class PokeballRecipes {
      * so "make me an iron pickaxe" is the same problem as "make me a Great Ball". Used by the tool
      * upkeep module.
      */
+    /**
+     * How many of a ball can be made from what is already to hand - no mining, no harvesting, no
+     * trips: just the materials in the inventory. Found by doubling until a plan starts wanting raw
+     * blocks, then binary searching the boundary, because the recipe tree gives no arithmetic
+     * shortcut (bases come five at a time, lids three at a time, and leftovers carry over).
+     */
+    public static int maxFromStock(RecipeHolder<?> ballRecipe, Inventory inventory) {
+        if (ballRecipe == null || inventory == null) {
+            return 0;
+        }
+        if (!craftableFromStock(ballRecipe, 1, inventory)) {
+            return 0;
+        }
+        int low = 1;
+        int high = 2;
+        while (high <= 2304 && craftableFromStock(ballRecipe, high, inventory)) {
+            low = high;
+            high *= 2;
+        }
+        high = Math.min(high, 2305);
+        while (low + 1 < high) {
+            int mid = (low + high) / 2;
+            if (craftableFromStock(ballRecipe, mid, inventory)) {
+                low = mid;
+            } else {
+                high = mid;
+            }
+        }
+        return low;
+    }
+
+    /** True when this many can be produced without mining or harvesting anything. */
+    private static boolean craftableFromStock(RecipeHolder<?> ballRecipe, int count,
+                                              Inventory inventory) {
+        CraftPlan plan = plan(ballRecipe, count, inventory);
+        if (!plan.isPossible()) {
+            return false;
+        }
+        for (CraftPlan.Step step : plan.steps) {
+            if (step.kind == CraftPlan.Kind.MINE || step.kind == CraftPlan.Kind.HARVEST) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     public static CraftPlan planItem(Item target, int count, Inventory inventory) {
         CraftPlan plan = new CraftPlan();
         if (target == null || count <= 0) {
@@ -242,6 +288,13 @@ public final class PokeballRecipes {
 
         private boolean produceByCrafting(Item item, int deficit, int depth) {
             for (RecipeHolder<?> holder : craftingRecipesFor(item)) {
+                // Skip recipes that just undo another one - slabs back into their block, ingots
+                // back out of a storage block. They look cheap (one ingredient) so the planner
+                // would pick them, and then plan to craft the very thing it is trying to make.
+                // Stone comes from smelting cobblestone, not from slabs.
+                if (isReversible(holder, item)) {
+                    continue;
+                }
                 ItemStack out = resultOf(holder);
                 int per = Math.max(1, out.getCount());
                 int crafts = ceilDiv(deficit, per);
@@ -324,6 +377,28 @@ public final class PokeballRecipes {
     }
 
     // ---------------------------------------------------------------- recipe lookup helpers
+
+    /**
+     * True when a recipe is the reverse of another one: it turns some item back into {@code target}
+     * while that item is itself made from {@code target}. Slabs and their block, ingots and their
+     * storage block, and the various "uncraft" recipes mods add are all like this, and following
+     * one leads the planner in a circle.
+     */
+    private static boolean isReversible(RecipeHolder<?> holder, Item target) {
+        Map<Item, Integer> ingredients = ingredientCounts(holder);
+        if (ingredients == null) {
+            return false;
+        }
+        for (Item ingredient : ingredients.keySet()) {
+            for (RecipeHolder<?> other : craftingRecipesFor(ingredient)) {
+                Map<Item, Integer> otherIngredients = ingredientCounts(other);
+                if (otherIngredients != null && otherIngredients.containsKey(target)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 
     /** All crafting recipes whose result is the given item, simplest (fewest ingredients) first. */
     private static List<RecipeHolder<?>> craftingRecipesFor(Item item) {

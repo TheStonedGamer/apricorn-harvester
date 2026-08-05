@@ -153,11 +153,17 @@ public final class FlatUI {
         }
     }
 
-    /** Number field with -/+ buttons. Right-clicking a button steps by ten. */
+    /**
+     * Number field with -/+ buttons. Right-clicking a button steps by ten, and clicking the number
+     * itself lets you type one: nudging from 16 to 512 one click at a time is nobody's idea of a
+     * good control.
+     */
     public static final class Stepper extends Widget {
         private final Supplier<Integer> value;
         private final Consumer<Integer> onChange;
         private final String suffix;
+        private boolean editing;
+        private String buffer = "";
 
         public Stepper(int x, int y, int w, Supplier<Integer> value, Consumer<Integer> onChange,
                        String suffix) {
@@ -165,6 +171,57 @@ public final class FlatUI {
             this.value = value;
             this.onChange = onChange;
             this.suffix = suffix;
+        }
+
+        public boolean isEditing() {
+            return editing;
+        }
+
+        /** Applies what was typed, if anything, and leaves edit mode. */
+        public void commit() {
+            if (editing && !buffer.isEmpty()) {
+                try {
+                    onChange.accept(Integer.parseInt(buffer));
+                } catch (NumberFormatException ignored) {
+                    // Leave the value alone if the buffer is not a number.
+                }
+            }
+            editing = false;
+            buffer = "";
+        }
+
+        public void cancel() {
+            editing = false;
+            buffer = "";
+        }
+
+        /** Feeds a typed character to the field; only digits count. */
+        public boolean charTyped(char c) {
+            if (!editing || !Character.isDigit(c) || buffer.length() >= 6) {
+                return editing;
+            }
+            buffer += c;
+            return true;
+        }
+
+        /** Backspace, enter and escape while typing. */
+        public boolean keyPressed(int keyCode) {
+            if (!editing) {
+                return false;
+            }
+            switch (keyCode) {
+                case 259 -> { // backspace
+                    if (!buffer.isEmpty()) {
+                        buffer = buffer.substring(0, buffer.length() - 1);
+                    }
+                }
+                case 257, 335 -> commit(); // enter, numpad enter
+                case 256 -> cancel(); // escape
+                default -> {
+                    return true;
+                }
+            }
+            return true;
         }
 
         @Override
@@ -176,8 +233,14 @@ public final class FlatUI {
             g.fill(x + w - 18, y, x + w, y + h, plusHover ? BORDER : PANEL_LIGHT);
             g.drawString(font(), "-", x + 8, y + 5, ACCENT, false);
             g.drawString(font(), "+", x + w - 11, y + 5, ACCENT, false);
-            String text = value.get() + (suffix.isEmpty() ? "" : " " + suffix);
-            g.drawString(font(), text, x + (w - font().width(text)) / 2, y + 5, TEXT, false);
+            if (editing) {
+                g.fill(x + 18, y + 1, x + w - 18, y + h - 1, BORDER);
+            }
+            String text = editing
+                    ? (buffer.isEmpty() ? "_" : buffer) + "|"
+                    : value.get() + (suffix.isEmpty() ? "" : " " + suffix);
+            g.drawString(font(), text, x + (w - font().width(text)) / 2, y + 5,
+                    editing ? ACCENT : TEXT, false);
         }
 
         @Override
@@ -187,14 +250,19 @@ public final class FlatUI {
             }
             int step = button == 1 ? 10 : 1;
             if (mx < x + 18) {
+                commit();
                 onChange.accept(value.get() - step);
                 return true;
             }
             if (mx >= x + w - 18) {
+                commit();
                 onChange.accept(value.get() + step);
                 return true;
             }
-            return false;
+            // The number itself: start typing a new one.
+            editing = true;
+            buffer = "";
+            return true;
         }
     }
 

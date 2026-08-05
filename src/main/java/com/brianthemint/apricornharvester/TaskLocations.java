@@ -77,6 +77,13 @@ public final class TaskLocations {
     /** When each command was last sent, so the cooldown can be honoured. */
     private static final Map<Task, Long> LAST_SENT = new EnumMap<>(Task.class);
 
+    /**
+     * The bases the deposit job may empty into, as travel commands ({@code home home2},
+     * {@code warp storage}, ...). A farm's chests are rarely all in one place, so the job works
+     * through this list, filling what it finds at each before moving to the next.
+     */
+    private static final List<String> HOMES = new ArrayList<>();
+
     private static boolean loaded;
 
     static {
@@ -133,6 +140,34 @@ public final class TaskLocations {
     }
 
     // ---------------------------------------------------------------- actions
+
+    /** The bases the deposit job visits, in order. */
+    public static List<String> homes() {
+        ensureLoaded();
+        return new ArrayList<>(HOMES);
+    }
+
+    /** Replaces the list of bases. Blank entries are dropped. */
+    public static void setHomes(List<String> commands) {
+        ensureLoaded();
+        HOMES.clear();
+        for (String command : commands) {
+            String normalized = normalize(command);
+            if (!normalized.isEmpty()) {
+                HOMES.add(normalized);
+            }
+        }
+        save();
+    }
+
+    /** The bases as one comma-separated string, which is how the GUI edits them. */
+    public static String homesAsText() {
+        return String.join(", ", homes());
+    }
+
+    public static void setHomesFromText(String text) {
+        setHomes(List.of(text == null ? new String[0] : text.split(",")));
+    }
 
     /** Every saved selection name on disk, for dropdowns and tab completion. */
     public static List<String> savedSelectionNames() {
@@ -242,6 +277,10 @@ public final class TaskLocations {
                 }
                 String key = trimmed.substring(0, eq).trim();
                 String value = trimmed.substring(eq + 1).trim();
+                if (key.equals("homes")) {
+                    setHomesQuiet(value);
+                    continue;
+                }
                 int dot = key.indexOf('.');
                 if (dot <= 0) {
                     continue;
@@ -267,9 +306,21 @@ public final class TaskLocations {
         }
     }
 
+    /** Fills the home list while loading, without writing the file back out again. */
+    private static void setHomesQuiet(String text) {
+        HOMES.clear();
+        for (String part : text.split(",")) {
+            String normalized = normalize(part);
+            if (!normalized.isEmpty()) {
+                HOMES.add(normalized);
+            }
+        }
+    }
+
     private static void save() {
         List<String> lines = new ArrayList<>();
         lines.add("# Apricorn Harvester task locations: saved selection + travel command per task.");
+        lines.add("homes=" + String.join(",", HOMES));
         for (Task task : Task.values()) {
             lines.add(task.key() + ".selection=" + SELECTIONS.getOrDefault(task, ""));
             lines.add(task.key() + ".command=" + COMMANDS.getOrDefault(task, ""));

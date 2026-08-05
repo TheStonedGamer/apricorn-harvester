@@ -116,6 +116,19 @@ public final class AddonContext {
         TaskLocations.applySelection(baritone, task);
     }
 
+    /**
+     * Loads a task's saved area only when there is nothing selected.
+     *
+     * <p>Pressing Run should work on what you have just marked out with {@code #sel}: quietly
+     * replacing it with whatever the task remembers from last week is a nasty surprise. The
+     * schedule still applies areas outright, because there nobody is standing over it choosing.
+     */
+    public void applyAreaIfUnset(TaskLocations.Task task) {
+        if (baritone.getSelectionManager().getLastSelection() == null) {
+            TaskLocations.applySelection(baritone, task);
+        }
+    }
+
     /** True when any of the addon's jobs is currently running. */
     public boolean anyRunning() {
         return (harvest != null && harvest.isActive())

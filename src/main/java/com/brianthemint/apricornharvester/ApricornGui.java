@@ -33,7 +33,9 @@ import java.util.function.BooleanSupplier;
 public class ApricornGui extends Screen {
 
     private static final int PANEL_W = 460;
-    private static final int PANEL_H = 300;
+    private static final int PANEL_H = 336;
+    /** Height of one module row on the schedule tab. */
+    private static final int MODULE_H = 18;
     private static final int SIDEBAR_W = 108;
     private static final int TAB_H = 20;
     private static final int ROW_H = 22;
@@ -264,6 +266,11 @@ public class ApricornGui extends Screen {
      * Vertical layout of the Farms tab, shared by the widgets and the text so the two cannot drift
      * apart: the farm list, then the map buttons, then delete, then the summary and the note.
      */
+    /** Where the schedule's options start: under the module rows, shared by widgets and labels. */
+    private int scheduleOptionsY(int y) {
+        return y + Schedule.order().size() * MODULE_H + 8;
+    }
+
     private int farmListRows() {
         return Math.max(1, Math.min(FARM_ROWS_VISIBLE, FarmMap.names().size()));
     }
@@ -315,26 +322,26 @@ public class ApricornGui extends Screen {
         List<ScheduleStep> order = Schedule.order();
         for (int i = 0; i < order.size(); i++) {
             ScheduleStep step = order.get(i);
-            int rowY = y + i * 20;
+            int rowY = y + i * MODULE_H;
             widgets.add(new FlatUI.Toggle(x, rowY + 1, () -> Schedule.isEnabled(step), enabled -> {
                 Schedule.setEnabled(step, enabled);
                 rebuildWidgets();
             }));
-            widgets.add(new FlatUI.Button(x + 40, rowY, w - 100, 18, step::label, () -> {
+            widgets.add(new FlatUI.Button(x + 40, rowY, w - 100, 16, step::label, () -> {
                 Schedule.setEnabled(step, !Schedule.isEnabled(step));
                 rebuildWidgets();
             }, Schedule.isEnabled(step)));
-            widgets.add(new FlatUI.Button(x + w - 56, rowY, 26, 18, () -> "^", () -> {
+            widgets.add(new FlatUI.Button(x + w - 56, rowY, 26, 16, () -> "^", () -> {
                 Schedule.move(step, -1);
                 rebuildWidgets();
             }, false));
-            widgets.add(new FlatUI.Button(x + w - 28, rowY, 26, 18, () -> "v", () -> {
+            widgets.add(new FlatUI.Button(x + w - 28, rowY, 26, 16, () -> "v", () -> {
                 Schedule.move(step, 1);
                 rebuildWidgets();
             }, false));
         }
 
-        int optionsY = y + order.size() * 20 + 8;
+        int optionsY = scheduleOptionsY(y);
         widgets.add(new FlatUI.Toggle(x, optionsY, Schedule::isRepeat, Schedule::setRepeat));
         widgets.add(new FlatUI.Stepper(x + w - 96, optionsY - 1, 96, Schedule::getMineAmount,
                 Schedule::setMineAmount, "ore"));
@@ -342,7 +349,7 @@ public class ApricornGui extends Screen {
         List<OreMineController.Ore> ores = OreMineController.Ore.available();
         if (!ores.isEmpty()) {
             OreMineController.Ore current = OreMineController.Ore.parse(Schedule.getMineOre());
-            dropdowns.add(new FlatUI.Dropdown<>(x + w - 170, optionsY + 24, 170, ores,
+            dropdowns.add(new FlatUI.Dropdown<>(x + w - 170, optionsY + 22, 170, ores,
                     current == null ? ores.get(0) : current, OreMineController.Ore::label,
                     ore -> Schedule.setMineOre(ore.name())));
         }
@@ -502,7 +509,7 @@ public class ApricornGui extends Screen {
 
         runPair(() -> context.harvest() != null && context.harvest().isActive(),
                 () -> {
-                    context.applyAreaFor(TaskLocations.Task.HARVEST);
+                    context.applyAreaIfUnset(TaskLocations.Task.HARVEST);
                     context.harvest().start();
                 },
                 () -> context.harvest().stop());
@@ -526,7 +533,7 @@ public class ApricornGui extends Screen {
 
         runPair(() -> context.plant() != null && context.plant().isRunning(),
                 () -> {
-                    context.applyAreaFor(TaskLocations.Task.PLANT);
+                    context.applyAreaIfUnset(TaskLocations.Task.PLANT);
                     context.plant().start();
                 },
                 () -> context.plant().stop());
@@ -598,7 +605,7 @@ public class ApricornGui extends Screen {
                 AddonSettings::setBonemealMax, "max"));
         runPair(() -> context.bonemeal() != null && context.bonemeal().isRunning(),
                 () -> {
-                    context.applyAreaFor(TaskLocations.Task.BONEMEAL);
+                    context.applyAreaIfUnset(TaskLocations.Task.BONEMEAL);
                     context.bonemeal().start();
                 },
                 () -> context.bonemeal().stop());
@@ -627,12 +634,16 @@ public class ApricornGui extends Screen {
                     PokeballConfig.setCount(value);
                     refreshPokeballPlan();
                 }, "balls"));
+        widgets.add(new FlatUI.Toggle(x, y + 24, PokeballConfig::isCraftUntilOut, value -> {
+            PokeballConfig.setCraftUntilOut(value);
+            rebuildWidgets();
+        }));
 
-        dropdowns.add(new FlatUI.Dropdown<>(x, y + 44, (w - 8) / 2,
+        dropdowns.add(new FlatUI.Dropdown<>(x, y + 68, (w - 8) / 2,
                 List.of(Items.COAL, Items.CHARCOAL, Items.COAL_BLOCK, Items.BLAZE_ROD,
                         Items.DRIED_KELP_BLOCK),
                 PokeballConfig.getFuel(), PokeballRecipes::nameOf, PokeballConfig::setFuel));
-        widgets.add(new FlatUI.Stepper(x + (w + 8) / 2, y + 45, (w - 8) / 2,
+        widgets.add(new FlatUI.Stepper(x + (w + 8) / 2, y + 69, (w - 8) / 2,
                 PokeballConfig::getStationRadius, PokeballConfig::setStationRadius, "blocks"));
 
         refreshPokeballPlan();
@@ -736,6 +747,15 @@ public class ApricornGui extends Screen {
             }, false));
             rowY += 24;
         }
+
+        // The bases the deposit job works through, as a comma-separated list of travel commands.
+        EditBox homesBox = new EditBox(this.font, x, rowY + 14, w, 18,
+                Component.literal("Homes"));
+        homesBox.setValue(TaskLocations.homesAsText());
+        homesBox.setMaxLength(200);
+        homesBox.setResponder(TaskLocations::setHomesFromText);
+        addWidget(homesBox);
+        boxes.add(homesBox);
     }
 
     // -- help
@@ -780,7 +800,36 @@ public class ApricornGui extends Screen {
     // ------------------------------------------------------------------ input
 
     @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        for (FlatUI.Widget widget : widgets) {
+            if (widget instanceof FlatUI.Stepper stepper && stepper.isEditing()
+                    && stepper.charTyped(codePoint)) {
+                return true;
+            }
+        }
+        return super.charTyped(codePoint, modifiers);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        for (FlatUI.Widget widget : widgets) {
+            if (widget instanceof FlatUI.Stepper stepper && stepper.isEditing()
+                    && stepper.keyPressed(keyCode)) {
+                return true;
+            }
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // Clicking anywhere else applies whatever number was being typed.
+        for (FlatUI.Widget widget : widgets) {
+            if (widget instanceof FlatUI.Stepper stepper && stepper.isEditing()
+                    && !stepper.isOver(mouseX, mouseY)) {
+                stepper.commit();
+            }
+        }
         for (FlatUI.Dropdown<?> dropdown : dropdowns) {
             if (dropdown.mouseClicked(mouseX, mouseY, button)) {
                 dropdowns.forEach(other -> {
@@ -981,18 +1030,17 @@ public class ApricornGui extends Screen {
             }
             case SCHEDULE -> {
                 FlatUI.label(g, "Modules - switch on what a run should do, in order", x, y - 10);
-                int optionsY = y + Schedule.order().size() * 20 + 8;
+                int optionsY = scheduleOptionsY(y);
                 FlatUI.label(g, "Repeat forever", x + 40, optionsY + 4);
-                FlatUI.label(g, "Mine amount", x + w - 180, optionsY + 4);
-                FlatUI.label(g, "Ore to mine", x, optionsY + 30);
+                FlatUI.label(g, "Mine amount", x + w - 184, optionsY + 4);
+                FlatUI.label(g, "Ore to mine", x, optionsY + 28);
                 String running = context.schedule() == null ? "" : context.schedule().status();
-                g.drawString(this.font, fit(running, w), x, optionsY + 54,
+                g.drawString(this.font, fit(running, w), x, optionsY + 52,
                         context.schedule() != null && context.schedule().isRunning()
                                 ? FlatUI.ACCENT : FlatUI.TEXT_DIM, false);
-                note(g, x, top() + PANEL_H - 56,
-                        "Each module travels to its own task area first, so set those up on",
-                        "the Task areas tab. Warp cooldowns are honoured: with /rtp on five",
-                        "minutes the run waits rather than spamming it.");
+                note(g, x, optionsY + 68,
+                        "Each module travels to its own task area first. Warp cooldowns are",
+                        "honoured, so a five minute /rtp is waited out, not spammed.");
             }
             case SELECTIONS -> {
                 List<String> names = TaskLocations.savedSelectionNames();
@@ -1053,9 +1101,10 @@ public class ApricornGui extends Screen {
             case POKEBALL -> {
                 FlatUI.label(g, "Ball", x, y - 10);
                 FlatUI.label(g, "Amount", x + w - 96, y - 10);
-                FlatUI.label(g, "Furnace fuel", x, y + 34);
-                FlatUI.label(g, "Station search", x + (w + 8) / 2, y + 34);
-                renderPokeballPlan(g, x, y + 76, w);
+                FlatUI.label(g, "Craft until out of materials", x + 40, y + 28);
+                FlatUI.label(g, "Furnace fuel", x, y + 58);
+                FlatUI.label(g, "Station search", x + (w + 8) / 2, y + 58);
+                renderPokeballPlan(g, x, y + 96, w);
             }
             case MINE -> {
                 FlatUI.label(g, "Ore", x, y + 6);
@@ -1075,6 +1124,7 @@ public class ApricornGui extends Screen {
                     g.drawString(this.font, task.label(), x, rowY + 6, FlatUI.TEXT, false);
                     rowY += 24;
                 }
+                FlatUI.label(g, "Homes the deposit job visits, comma separated", x, rowY + 3);
                 for (EditBox box : boxes) {
                     box.render(g, mouseX, mouseY, partialTick);
                 }

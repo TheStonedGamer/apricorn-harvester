@@ -38,7 +38,10 @@ public final class DepositController {
     private static final int OPEN_TIMEOUT = 40;
     private static final int WALK_TIMEOUT = 20 * 60;
 
-    private enum Phase { IDLE, SCAN, WALK, OPEN, DEPOSIT, CLOSE }
+    private enum Phase { IDLE, SCAN, WALK, OPEN, DEPOSIT, CLOSE, SETTLE }
+
+    /** Ticks to wait after warping to another base before looking for its chests. */
+    private static final int SETTLE_TICKS = 80;
 
     private final IBaritone baritone;
 
@@ -50,6 +53,8 @@ public final class DepositController {
     private int noProgress;
     private int lastCount = -1;
     private int deposited;
+    /** How far through the list of bases this run has got. */
+    private int homeIndex;
 
     public DepositController(IBaritone baritone) {
         this.baritone = baritone;
@@ -81,6 +86,7 @@ public final class DepositController {
             return;
         }
         tried.clear();
+        homeIndex = 0;
         deposited = 0;
         ticks = 0;
         noProgress = 0;
@@ -124,7 +130,11 @@ public final class DepositController {
                 }
                 target = nearestContainer();
                 if (target == null) {
-                    finish("No container with room left nearby (" + deposited + " stack(s) done).");
+                    // Out of chests here: move on to the next base, if there is one.
+                    if (travelToNextHome()) {
+                        return;
+                    }
+                    finish("No container with room left (" + deposited + " stack(s) done).");
                     return;
                 }
                 phase = Phase.WALK;
@@ -214,12 +224,44 @@ public final class DepositController {
                 closeScreen();
                 phase = Phase.SCAN;
             }
+            case SETTLE -> {
+                if (++ticks >= SETTLE_TICKS) {
+                    phase = Phase.SCAN;
+                    ticks = 0;
+                }
+            }
             default -> {
             }
         }
     }
 
     // ---------------------------------------------------------------- helpers
+
+    /**
+     * Sends the bot to the next configured base and waits for the chunks there.
+     *
+     * <p>A farm's storage is rarely all in one place, so the job works through the list of homes:
+     * fill what is at this one, then warp to the next and carry on. The containers already written
+     * off as full stay written off, since they may still be in range from the new spot.
+     *
+     * @return true when a hop was started
+     */
+    private boolean travelToNextHome() {
+        List<String> homes = TaskLocations.homes();
+        if (homeIndex >= homes.size()) {
+            return false;
+        }
+        String command = homes.get(homeIndex++);
+        var player = Minecraft.getInstance().player;
+        if (player == null) {
+            return false;
+        }
+        logDirect("Nothing left here - going to /" + command + "...");
+        player.connection.sendCommand(command);
+        phase = Phase.SETTLE;
+        ticks = 0;
+        return true;
+    }
 
     /**
      * True for anything that should go in a chest. The jobs need dirt to scaffold with, bone meal

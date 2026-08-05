@@ -153,9 +153,20 @@ public final class PokeballFactory {
             logDirect("No ball selected (or the server has no recipe for it). Open the GUI or use #pokeball ball <name>.");
             return null;
         }
-        CraftPlan planned = PokeballRecipes.plan(ball, PokeballConfig.getCount(), player.getInventory());
+        int wanted = PokeballConfig.getCount();
+        if (PokeballConfig.isCraftUntilOut()) {
+            // Use up what is to hand rather than making a fixed number: after a harvest nobody
+            // knows how many apricorns came back.
+            wanted = PokeballRecipes.maxFromStock(ball, player.getInventory());
+            if (wanted <= 0) {
+                logDirect("Not enough materials for a single " + PokeballRecipes.ballName(ball) + ".");
+                return null;
+            }
+            logDirect("Materials are good for " + wanted + "x " + PokeballRecipes.ballName(ball) + ".");
+        }
+        CraftPlan planned = PokeballRecipes.plan(ball, wanted, player.getInventory());
         if (!planned.isPossible()) {
-            logDirect("Cannot make " + PokeballConfig.getCount() + "x "
+            logDirect("Cannot make " + wanted + "x "
                     + PokeballRecipes.ballName(ball) + ": nothing can produce "
                     + String.join(", ", planned.missing) + ".");
             return planned;
@@ -165,7 +176,7 @@ public final class PokeballFactory {
             return planned;
         }
 
-        runPlan(planned, PokeballConfig.getCount() + "x " + PokeballRecipes.ballName(ball));
+        runPlan(planned, wanted + "x " + PokeballRecipes.ballName(ball));
         return planned;
     }
 
