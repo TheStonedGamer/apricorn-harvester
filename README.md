@@ -63,9 +63,10 @@ distance cannot be planned from where you stand — the far half reads as empty 
 quietly stops at the edge of what happened to be loaded.
 
 `#farm map <name>` fixes that by surveying the field once: the bot walks a lawnmower route across the
-selection so every chunk loads, recording the path stands, the trees and their colours, and the
-containers. The map is saved to `.minecraft/baritone/apricorn-farms/` and reused, so later runs plan
-over the whole farm without walking it again.
+selection so every chunk loads, and remembers what it saw — the path stands, the bush tops it can
+harvest from, every apricorn block and its colour, the chests and barrels, and the corner it
+scaffolds from. The map is saved to `.minecraft/baritone/apricorn-farms/` and reused, so later runs
+plan over the whole farm — stands, canopy and containers alike — without walking it again.
 
 ```
 #farm                     list the farms you have surveyed
@@ -92,8 +93,9 @@ climbs up by stacking dirt (as a player would; it never breaks anything), sweeps
 like a lawnmower clicking everything in reach, then comes down and collects the drops from the
 ground.
 
-The dirt pillar it climbs is left standing — it is the way back up next run — and the block it breaks
-on the way down is picked back up.
+The way up is **built at the farm's edge and taken back down afterwards**: never among the bushes,
+and every block it places is remembered, so the teardown removes exactly those and collects the dirt
+on the way down. The spot is saved in the farm map, so later runs scaffold in the same corner.
 
 `#apricorn canopy false` switches to the old behaviour: the bot works only from the paths, and the
 apricorn leaves go into Baritone's `blocksToAvoid` so it never steps on a bush. That reaches less,

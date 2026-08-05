@@ -180,6 +180,7 @@ public final class FarmMapper {
                     continue;
                 }
                 boolean columnHasTree = false;
+                BlockPos highestLeaf = null;
                 for (int y = map.min.getY(); y <= map.max.getY(); y++) {
                     BlockPos pos = new BlockPos(x, y, z);
                     BlockState state = mc.level.getBlockState(pos);
@@ -189,11 +190,20 @@ public final class FarmMapper {
                             map.colours.merge(type, 1, Integer::sum);
                         }
                         columnHasTree = true;
+                        highestLeaf = pos;
                     } else if (ApricornBlocks.isContainer(state)) {
                         map.containers.add(pos);
                     }
                 }
-                if (!columnHasTree) {
+                if (columnHasTree) {
+                    // Where a canopy sweep can stand: on the top leaf, with room for the player.
+                    BlockPos feet = highestLeaf.above();
+                    BlockPos head = highestLeaf.above(2);
+                    if (mc.level.getBlockState(feet).getCollisionShape(mc.level, feet).isEmpty()
+                            && mc.level.getBlockState(head).getCollisionShape(mc.level, head).isEmpty()) {
+                        map.canopyStands.add(feet);
+                    }
+                } else {
                     BlockPos stand = standIn(x, z);
                     if (stand != null) {
                         map.stands.add(stand);

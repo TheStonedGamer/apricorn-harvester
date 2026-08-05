@@ -35,6 +35,13 @@ public final class FarmMap {
     public BlockPos max;
     /** Feet positions of the farm's walkable paths. */
     public final Set<BlockPos> stands = new LinkedHashSet<>();
+    /** Feet positions on top of the bushes, where a canopy sweep works from. */
+    public final Set<BlockPos> canopyStands = new LinkedHashSet<>();
+    /**
+     * Where the bot built its way onto the canopy last time. Reusing the same spot keeps the
+     * scaffolding to one place on the farm's edge instead of a new hole in the ground each run.
+     */
+    public BlockPos scaffoldSite;
     /** Apricorn leaf positions seen while mapping, whatever their growth stage. */
     public final Set<BlockPos> trees = new LinkedHashSet<>();
     /** Chests, barrels and shulker boxes in and around the farm. */
@@ -67,8 +74,8 @@ public final class FarmMap {
             colourText.append(ApricornPlanting.displayName(entry.getKey()))
                     .append(" ").append(entry.getValue());
         }
-        return name + ": " + stands.size() + " stands, " + trees.size() + " tree blocks, "
-                + containers.size() + " containers"
+        return name + ": " + stands.size() + " stands, " + canopyStands.size() + " canopy stands, "
+                + trees.size() + " tree blocks, " + containers.size() + " containers"
                 + (colourText.length() == 0 ? "" : " [" + colourText + "]");
     }
 
@@ -115,8 +122,15 @@ public final class FarmMap {
         for (Map.Entry<ApricornType, Integer> entry : colours.entrySet()) {
             lines.add("colour=" + entry.getKey().name() + "," + entry.getValue());
         }
+        if (scaffoldSite != null) {
+            lines.add("scaffold=" + scaffoldSite.getX() + "," + scaffoldSite.getY()
+                    + "," + scaffoldSite.getZ());
+        }
         for (BlockPos pos : stands) {
             lines.add("stand=" + pos.getX() + "," + pos.getY() + "," + pos.getZ());
+        }
+        for (BlockPos pos : canopyStands) {
+            lines.add("canopy=" + pos.getX() + "," + pos.getY() + "," + pos.getZ());
         }
         for (BlockPos pos : trees) {
             lines.add("tree=" + pos.getX() + "," + pos.getY() + "," + pos.getZ());
@@ -160,6 +174,8 @@ public final class FarmMap {
                 switch (key) {
                     case "mappedAt" -> map.mappedAt = Long.parseLong(value);
                     case "stand" -> map.stands.add(parsePos(value));
+                    case "canopy" -> map.canopyStands.add(parsePos(value));
+                    case "scaffold" -> map.scaffoldSite = parsePos(value);
                     case "tree" -> map.trees.add(parsePos(value));
                     case "container" -> map.containers.add(parsePos(value));
                     case "colour" -> {

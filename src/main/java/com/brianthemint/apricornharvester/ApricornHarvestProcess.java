@@ -209,12 +209,25 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         IDLE, EQUIP_DIRT, LOOK_DOWN, JUMP_PLACE, WAIT_LAND, HARVEST, LOOK_BREAK, BREAKING, WAIT_FALL,
         COLLECT_DIRT
     }
-    /** Pillaring up with dirt to reach the canopy at the start of a roof sweep. */
-    private enum ClimbPhase { IDLE, EQUIP, JUMP_PLACE, WAIT_LAND }
+    /**
+     * Building the scaffold that gets the bot onto the canopy, and taking it down again.
+     *
+     * <p>It is built at the edge of the farm rather than wherever the bot happens to be, so the
+     * blocks never sit among the bushes, and every block placed is remembered so the teardown puts
+     * the field back exactly as it was and the dirt comes home in the inventory.
+     */
+    private enum ClimbPhase {
+        IDLE, GOTO_SITE, EQUIP, JUMP_PLACE, WAIT_LAND,
+        TEAR_LOOK, TEAR_BREAK, TEAR_FALL, TEAR_COLLECT
+    }
 
     private ClimbPhase climbPhase = ClimbPhase.IDLE;
     private int climbTargetY;
     private int climbTicks;
+    /** Where the scaffold is being built: a stand on the edge of the selection. */
+    private BlockPos scaffoldSite;
+    /** Every block this run placed, bottom first, so the teardown removes exactly those. */
+    private final List<BlockPos> scaffoldBlocks = new ArrayList<>();
 
     private TowerPhase towerPhase = TowerPhase.IDLE;
     private BlockPos towerBlockPos = null;
@@ -359,6 +372,8 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         this.harvestedAtThisStop = false;
         this.towerPhase = TowerPhase.IDLE;
         this.climbPhase = ClimbPhase.IDLE;
+        this.scaffoldSite = null;
+        this.scaffoldBlocks.clear();
         this.towerBlockPos = null;
         this.towerTicks = 0;
         this.previousSlot = -1;
@@ -758,13 +773,25 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         return null;
     }
 
-    /** Every standable bush top in the selection. */
+    /**
+     * Every standable bush top in the selection: the ones the farm map remembers, plus whatever is
+     * loaded right now. The map is what makes a farm bigger than the render distance workable -
+     * unloaded chunks read as air, so a live scan alone would only ever find the part in view.
+     */
     private List<BlockPos> canopyStands() {
         List<BlockPos> stands = new ArrayList<>();
+        FarmMap farm = FarmSelection.current();
+        if (farm != null && farm.isMapped() && coversSelection(farm)) {
+            for (BlockPos stand : farm.canopyStands) {
+                if (withinSelection(stand)) {
+                    stands.add(stand);
+                }
+            }
+        }
         for (int x = selMin.getX(); x <= selMax.getX(); x++) {
             for (int z = selMin.getZ(); z <= selMax.getZ(); z++) {
                 BlockPos stand = canopyStand(x, z);
-                if (stand != null) {
+                if (stand != null && !stands.contains(stand)) {
                     stands.add(stand);
                 }
             }
@@ -962,6 +989,38 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         }
         climbTicks++;
         switch (climbPhase) {
+            case GOTO_SITE: {
+                // Build at the edge, not in the middle of the field.
+                if (scaffoldSite == null) {
+                    scaffoldSite = edgeStand();
+                    if (scaffoldSite == null) {
+                        logDirect("Nowhere at the farm edge to build from - working from the paths.");
+                        towerSkippedForRun = true;
+                        endClimb();
+                        return null;
+                    }
+                    logDirect("Building a way up at the farm edge " + scaffoldSite + "...");
+                    // Remember it, so every later run scaffolds in the same corner.
+                    FarmMap farm = FarmSelection.current();
+                    if (farm != null && farm.isMapped()) {
+                        farm.scaffoldSite = scaffoldSite;
+                        farm.save();
+                    }
+                }
+                if (ctx.playerFeet().closerThan(scaffoldSite, 1.5)) {
+                    climbPhase = ClimbPhase.EQUIP;
+                    climbTicks = 0;
+                    break;
+                }
+                if (climbTicks > 20 * 60) {
+                    logDirect("Could not get to the build site " + scaffoldSite + ".");
+                    towerSkippedForRun = true;
+                    endClimb();
+                    return null;
+                }
+                return new PathingCommand(new GoalBlock(scaffoldSite),
+                        PathingCommandType.SET_GOAL_AND_PATH);
+            }
             case EQUIP: {
                 if (ctx.playerFeet().getY() >= climbTargetY) {
                     endClimb();
@@ -991,6 +1050,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                             placePos, false);
                     ctx.playerController().processRightClickBlock(ctx.player(), ctx.world(),
                             InteractionHand.MAIN_HAND, hit);
+                    scaffoldBlocks.add(placePos);
                     climbPhase = ClimbPhase.WAIT_LAND;
                     climbTicks = 0;
                 } else if (climbTicks > 40) {
@@ -1015,17 +1075,132 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                 }
                 break;
             }
+            case TEAR_LOOK: {
+                if (scaffoldBlocks.isEmpty()) {
+                    endClimb();
+                    return null;
+                }
+                // The bot has to be standing on the block it is about to remove, so it drops onto
+                // the next one down: after the roof sweep it is somewhere else on the canopy.
+                BlockPos topBlock = scaffoldBlocks.get(scaffoldBlocks.size() - 1);
+                BlockPos onTop = topBlock.above();
+                if (!ctx.playerFeet().equals(onTop)) {
+                    if (climbTicks > 20 * 45) {
+                        logDirect("Could not get back to the scaffold - leaving it standing.");
+                        scaffoldBlocks.clear();
+                        endClimb();
+                        return null;
+                    }
+                    return new PathingCommand(new GoalBlock(onTop), PathingCommandType.SET_GOAL_AND_PATH);
+                }
+                baritone.getLookBehavior().updateTarget(new Rotation(ctx.player().getYRot(), 90.0f), true);
+                if (climbTicks > 2) {
+                    climbPhase = ClimbPhase.TEAR_BREAK;
+                    climbTicks = 0;
+                }
+                break;
+            }
+            case TEAR_BREAK: {
+                // Always the topmost remaining block, which is the one under the player's feet.
+                BlockPos top = scaffoldBlocks.get(scaffoldBlocks.size() - 1);
+                baritone.getLookBehavior().updateTarget(new Rotation(ctx.player().getYRot(), 90.0f), true);
+                if (ctx.world().getBlockState(top).isAir()) {
+                    ctx.playerController().resetBlockRemoving();
+                    scaffoldBlocks.remove(scaffoldBlocks.size() - 1);
+                    climbPhase = ClimbPhase.TEAR_FALL;
+                    climbTicks = 0;
+                    break;
+                }
+                if (climbTicks == 1) {
+                    ctx.playerController().clickBlock(top, Direction.UP);
+                } else {
+                    ctx.playerController().onPlayerDamageBlock(top, Direction.UP);
+                }
+                if (climbTicks > 20 * 15) {
+                    logDirect("Could not break the scaffold at " + top + ", leaving it.");
+                    scaffoldBlocks.clear();
+                    endClimb();
+                    return null;
+                }
+                break;
+            }
+            case TEAR_FALL: {
+                if (ctx.player().onGround()) {
+                    climbPhase = ClimbPhase.TEAR_COLLECT;
+                    climbTicks = 0;
+                }
+                break;
+            }
+            case TEAR_COLLECT: {
+                ItemEntity dirt = nearestDroppedDirt();
+                if (dirt != null && climbTicks <= DIRT_PICKUP_TICKS) {
+                    BlockPos dirtPos = dirt.blockPosition();
+                    if (!ctx.playerFeet().closerThan(dirtPos, 1.5)) {
+                        return new PathingCommand(new GoalBlock(dirtPos),
+                                PathingCommandType.SET_GOAL_AND_PATH);
+                    }
+                    break;
+                }
+                if (scaffoldBlocks.isEmpty()) {
+                    logDirect("Scaffold taken back down.");
+                    endClimb();
+                    return null;
+                }
+                climbPhase = ClimbPhase.TEAR_LOOK;
+                climbTicks = 0;
+                break;
+            }
             default:
                 break;
         }
         return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
     }
 
-    /** Starts a dirt climb to the given feet height. */
+    /** Starts building the way up to the given feet height. */
     private void beginClimb(int targetY) {
-        climbPhase = ClimbPhase.EQUIP;
+        climbPhase = ClimbPhase.GOTO_SITE;
         climbTargetY = targetY;
         climbTicks = 0;
+    }
+
+    /** Starts taking the scaffold back down, block by block, collecting the dirt. */
+    private void beginTeardown() {
+        if (scaffoldBlocks.isEmpty()) {
+            return;
+        }
+        logDirect("Taking the scaffold back down (" + scaffoldBlocks.size() + " blocks)...");
+        climbPhase = ClimbPhase.TEAR_LOOK;
+        climbTicks = 0;
+    }
+
+    /**
+     * A stand on the edge of the selection, nearest the player: where the scaffold goes so that it
+     * is never built in among the bushes.
+     */
+    private BlockPos edgeStand() {
+        // Reuse last run's spot when the farm remembers one: the scaffolding then always goes up
+        // and comes down in the same corner instead of somewhere new each time.
+        FarmMap farm = FarmSelection.current();
+        if (farm != null && farm.scaffoldSite != null && withinSelection(farm.scaffoldSite)
+                && !unreachableStands.contains(farm.scaffoldSite)) {
+            return farm.scaffoldSite;
+        }
+        BlockPos player = ctx.playerFeet();
+        BlockPos best = null;
+        double bestDistSq = Double.MAX_VALUE;
+        for (BlockPos stand : pathStands) {
+            boolean onEdge = stand.getX() == selMin.getX() || stand.getX() == selMax.getX()
+                    || stand.getZ() == selMin.getZ() || stand.getZ() == selMax.getZ();
+            if (!onEdge || unreachableStands.contains(stand)) {
+                continue;
+            }
+            double d = stand.distSqr(player);
+            if (d < bestDistSq) {
+                bestDistSq = d;
+                best = stand;
+            }
+        }
+        return best;
     }
 
     private void endClimb() {
@@ -1158,6 +1333,17 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
      * that stay on the ground after {@link #PICKUP_WAIT_TICKS} (full inventory) are skipped.
      */
     private PathingCommand beginPickupPass() {
+        // Come down first: the scaffold is taken back apart and the dirt collected before the bot
+        // walks the ground for the drops.
+        if (!scaffoldBlocks.isEmpty() && climbPhase == ClimbPhase.IDLE) {
+            beginTeardown();
+        }
+        if (climbPhase != ClimbPhase.IDLE) {
+            PathingCommand cmd = tickClimb();
+            if (cmd != null) {
+                return cmd;
+            }
+        }
         pickingUp = true;
         skippedItems.clear();
         pickupWait = 0;
@@ -1355,6 +1541,24 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                 int bestEmptySlots = 0;
                 double bestDistSq = Double.MAX_VALUE;
                 Vec3 playerPos = ctx.player().position();
+
+                // Containers the farm survey recorded count too: one may well be in a chunk that
+                // is not loaded from where the bot is standing right now.
+                FarmMap farm = FarmSelection.current();
+                if (farm != null && farm.isMapped()) {
+                    for (BlockPos pos : farm.containers) {
+                        if (triedContainers.contains(pos)) {
+                            continue;
+                        }
+                        double d = playerPos.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5,
+                                pos.getZ() + 0.5);
+                        if (d < bestDistSq) {
+                            bestDistSq = d;
+                            bestPos = pos;
+                            bestEmptySlots = countEmptyContainerSlots(pos);
+                        }
+                    }
+                }
 
                 for (int x = minX; x <= maxX; x++) {
                     for (int z = minZ; z <= maxZ; z++) {
