@@ -239,7 +239,8 @@ Everything lives in one window on one key: **G**, or `#config`. Rebind it under
 
 | Tab | What it holds |
 | --- | --- |
-| **Farms** | Every surveyed farm listed with its size — click one to work on it; Map / Re-map |
+| **Farms** | Every surveyed farm listed with its size — click one to work on it; Map / Re-map / Delete |
+| **Selections** | The `#save` selections: click to load, Delete, or save the current one under a name |
 | **Harvest** | Tops, deposit, chest search radius, colour filter; Run |
 | **Planting** | Spacing, wall clearance, row snap, row direction, default colour; Run |
 | **Row colours** | One row per line — left click for the next colour, right click for the previous |

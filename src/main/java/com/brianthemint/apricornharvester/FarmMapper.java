@@ -1,7 +1,8 @@
 package com.brianthemint.apricornharvester;
 
+import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
-import baritone.api.pathing.goals.GoalNear;
+import baritone.api.pathing.goals.GoalXZ;
 import baritone.api.utils.Helper;
 import com.pixelmonmod.pixelmon.enums.items.ApricornType;
 import net.minecraft.client.Minecraft;
@@ -39,6 +40,9 @@ public final class FarmMapper {
     private final List<BlockPos> waypoints = new ArrayList<>();
     private int waypointIndex;
     private int ticks;
+    private boolean previousAllowBreak;
+    /** Leaf blocks this survey added to Baritone's blocksToAvoid, so only those are removed after. */
+    private final List<net.minecraft.world.level.block.Block> canopyBlocksAdded = new ArrayList<>();
 
     public FarmMapper(IBaritone baritone) {
         this.baritone = baritone;
@@ -82,7 +86,8 @@ public final class FarmMapper {
         ticks = 0;
 
         // A lawnmower route over the selection: every column ends up within a chunk of some
-        // waypoint, so it loads at least once during the walk.
+        // waypoint, so it loads at least once during the walk. The Y is the selection floor, not
+        // its top: a waypoint at tree-top height is an invitation to climb the bushes.
         boolean reverse = false;
         for (int z = min.getZ(); z <= max.getZ() + WAYPOINT_STEP; z += WAYPOINT_STEP) {
             int cz = Math.min(z, max.getZ());
@@ -94,10 +99,15 @@ public final class FarmMapper {
                 java.util.Collections.reverse(xs);
             }
             for (int cx : xs) {
-                waypoints.add(new BlockPos(cx, max.getY(), cz));
+                waypoints.add(new BlockPos(cx, min.getY(), cz));
             }
             reverse = !reverse;
         }
+
+        // Survey from the paths like every other job: no breaking, and no walking over the bushes.
+        previousAllowBreak = BaritoneAPI.getSettings().allowBreak.value;
+        BaritoneAPI.getSettings().allowBreak.value = false;
+        CanopyAvoidance.avoid(canopyBlocksAdded);
 
         running = true;
         logDirect("Mapping farm '" + name + "': " + waypoints.size() + " waypoints to walk.");
@@ -110,6 +120,7 @@ public final class FarmMapper {
         }
         running = false;
         baritone.getCustomGoalProcess().setGoal(null);
+        restoreSettings();
         logDirect("Mapping stopped.");
     }
 
@@ -127,8 +138,11 @@ public final class FarmMapper {
             return;
         }
         BlockPos target = waypoints.get(waypointIndex);
-        double distSq = mc.player.blockPosition().distSqr(target);
-        if (distSq <= ARRIVED_DISTANCE_SQ) {
+        // Distance is measured on the flat: the waypoint is a column to visit, and whatever height
+        // the path happens to be at there is fine.
+        double dx = mc.player.getX() - (target.getX() + 0.5);
+        double dz = mc.player.getZ() - (target.getZ() + 0.5);
+        if (dx * dx + dz * dz <= ARRIVED_DISTANCE_SQ) {
             waypointIndex++;
             ticks = 0;
             baritone.getCustomGoalProcess().setGoal(null);
@@ -136,7 +150,9 @@ public final class FarmMapper {
         }
         ticks++;
         if (ticks == 1 || ticks % 60 == 0) {
-            baritone.getCustomGoalProcess().setGoalAndPath(new GoalNear(target, 4));
+            // GoalXZ, not a 3D goal: asking for a particular height is what sent the survey up
+            // onto the canopy instead of along the paths.
+            baritone.getCustomGoalProcess().setGoalAndPath(new GoalXZ(target.getX(), target.getZ()));
         }
         if (ticks > WAYPOINT_TIMEOUT) {
             logDirect("Could not reach survey point " + target + ", skipping it.");
@@ -210,9 +226,16 @@ public final class FarmMapper {
         return null;
     }
 
+    /** Puts back the pathing settings the survey borrowed. */
+    private void restoreSettings() {
+        BaritoneAPI.getSettings().allowBreak.value = previousAllowBreak;
+        CanopyAvoidance.release(canopyBlocksAdded);
+    }
+
     private void finish() {
         running = false;
         baritone.getCustomGoalProcess().setGoal(null);
+        restoreSettings();
         map.mappedAt = Minecraft.getInstance().level == null
                 ? System.currentTimeMillis() : Minecraft.getInstance().level.getGameTime();
         map.save();

@@ -46,6 +46,15 @@ public final class SelectionStorage {
         Files.writeString(file, contents, StandardCharsets.UTF_8);
     }
 
+    /** Removes a saved selection. Returns true when there was one to remove. */
+    public static boolean delete(Path gameDirectory, String name) {
+        try {
+            return Files.deleteIfExists(selectionFile(gameDirectory, name));
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
     public static Optional<SavedSelection> load(Path gameDirectory, String name) throws IOException {
         Path file = selectionFile(gameDirectory, name);
         if (!Files.isRegularFile(file)) {

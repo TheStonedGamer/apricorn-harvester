@@ -41,6 +41,7 @@ public class ApricornGui extends Screen {
     /** The tabs, in sidebar order. */
     public enum Tab {
         FARMS("Farms"),
+        SELECTIONS("Selections"),
         HARVEST("Harvest"),
         PLANT("Planting"),
         ROWS("Row colours"),
@@ -74,6 +75,13 @@ public class ApricornGui extends Screen {
     // per-tab state that belongs to the window rather than to a saved setting
     private int rowScroll;
     private int farmScroll;
+    private int selectionScroll;
+    /** Names armed for deletion, so a delete always takes two clicks. */
+    private String confirmDeleteFarm;
+    private String confirmDeleteSelection;
+    /** What is typed in the "save selection" box, kept while the tab rebuilds. */
+    private String pendingSelectionName = "";
+    private EditBox selectionNameBox;
     private int oreIndex;
     private int oreAmount = 32;
     private int huntHops = 10;
@@ -148,6 +156,7 @@ public class ApricornGui extends Screen {
 
         switch (lastTab) {
             case FARMS -> initFarms(x, y, w);
+            case SELECTIONS -> initSelections(x, y, w);
             case HARVEST -> initHarvest(x, y, w);
             case PLANT -> initPlant(x, y, w);
             case ROWS -> initRows(x, y, w);
@@ -215,6 +224,34 @@ public class ApricornGui extends Screen {
                 context.mapper().stop();
             }
         }, false));
+
+        // Deleting the selected farm's map. Two clicks: the first arms it, so a stray click on a
+        // survey that took ten minutes to walk does not throw it away.
+        widgets.add(new FlatUI.Button(x, actionY + 26, 150, 20,
+                () -> confirmDeleteFarm == null ? "Delete map" : "Delete '" + confirmDeleteFarm + "'?",
+                () -> {
+                    String name = FarmSelection.currentName();
+                    if (name.isEmpty()) {
+                        Helper.HELPER.logDirect("No farm selected to delete.");
+                        return;
+                    }
+                    if (!name.equals(confirmDeleteFarm)) {
+                        confirmDeleteFarm = name;
+                        rebuildWidgets();
+                        return;
+                    }
+                    FarmMap.delete(name);
+                    FarmSelection.clear();
+                    confirmDeleteFarm = null;
+                    Helper.HELPER.logDirect("Deleted the map of '" + name + "'.");
+                    rebuildWidgets();
+                }, false));
+        if (confirmDeleteFarm != null) {
+            widgets.add(new FlatUI.Button(x + 158, actionY + 26, 80, 20, () -> "Keep it", () -> {
+                confirmDeleteFarm = null;
+                rebuildWidgets();
+            }, false));
+        }
     }
 
     private boolean mapperRunning() {
@@ -240,6 +277,113 @@ public class ApricornGui extends Screen {
         }
         onClose();
         context.mapper().start(name, sel.min(), sel.max());
+    }
+
+    // -- saved selections
+
+    /**
+     * The {@code #save}/{@code #load} selections, managed rather than merely listed: load one into
+     * Baritone, delete one, or store the current selection under a name.
+     */
+    private void initSelections(int x, int y, int w) {
+        List<String> names = TaskLocations.savedSelectionNames();
+        int maxScroll = Math.max(0, names.size() - FARM_ROWS_VISIBLE);
+        selectionScroll = Math.max(0, Math.min(selectionScroll, maxScroll));
+        int shown = Math.min(FARM_ROWS_VISIBLE, names.size());
+
+        for (int i = 0; i < shown; i++) {
+            String name = names.get(selectionScroll + i);
+            int rowY = y + i * 22;
+            widgets.add(new FlatUI.Button(x, rowY, w - 150, 20, () -> name, () -> {
+                if (loadSelection(name)) {
+                    Helper.HELPER.logDirect("Loaded selection '" + name + "'.");
+                    onClose();
+                }
+            }, false));
+            widgets.add(new FlatUI.Button(x + w - 146, rowY, 60, 20, () -> "Load", () -> {
+                if (loadSelection(name)) {
+                    Helper.HELPER.logDirect("Loaded selection '" + name + "'.");
+                    onClose();
+                }
+            }, false));
+            widgets.add(new FlatUI.Button(x + w - 82, rowY, 82, 20,
+                    () -> name.equals(confirmDeleteSelection) ? "Sure?" : "Delete",
+                    () -> {
+                        if (!name.equals(confirmDeleteSelection)) {
+                            confirmDeleteSelection = name;
+                            rebuildWidgets();
+                            return;
+                        }
+                        SelectionStorage.delete(
+                                net.minecraft.client.Minecraft.getInstance().gameDirectory.toPath(), name);
+                        confirmDeleteSelection = null;
+                        Helper.HELPER.logDirect("Deleted selection '" + name + "'.");
+                        rebuildWidgets();
+                    }, false));
+        }
+        if (maxScroll > 0) {
+            widgets.add(new FlatUI.Button(x, y + shown * 22 + 4, 40, 18, () -> "^", () -> {
+                selectionScroll = Math.max(0, selectionScroll - FARM_ROWS_VISIBLE);
+                rebuildWidgets();
+            }, false));
+            widgets.add(new FlatUI.Button(x + 44, y + shown * 22 + 4, 40, 18, () -> "v", () -> {
+                selectionScroll = Math.min(maxScroll, selectionScroll + FARM_ROWS_VISIBLE);
+                rebuildWidgets();
+            }, false));
+        }
+
+        // Saving the current selection under a typed name.
+        int saveY = y + Math.max(shown, 1) * 22 + (maxScroll > 0 ? 28 : 10);
+        selectionNameBox = new EditBox(this.font, x, saveY, w - 110, 18,
+                Component.literal("Selection name"));
+        selectionNameBox.setValue(pendingSelectionName);
+        selectionNameBox.setMaxLength(32);
+        selectionNameBox.setResponder(value -> pendingSelectionName = value);
+        addWidget(selectionNameBox);
+        boxes.add(selectionNameBox);
+
+        widgets.add(new FlatUI.Button(x + w - 106, saveY, 106, 18, () -> "Save selection",
+                this::saveCurrentSelection, true));
+    }
+
+    private boolean loadSelection(String name) {
+        try {
+            var saved = SelectionStorage.load(
+                    net.minecraft.client.Minecraft.getInstance().gameDirectory.toPath(), name);
+            if (saved.isEmpty()) {
+                Helper.HELPER.logDirect("Selection '" + name + "' could not be read.");
+                return false;
+            }
+            context.baritone().getSelectionManager().removeAllSelections();
+            context.baritone().getSelectionManager()
+                    .addSelection(saved.get().pos1(), saved.get().pos2());
+            return true;
+        } catch (java.io.IOException e) {
+            Helper.HELPER.logDirect("Selection '" + name + "' could not be read: " + e);
+            return false;
+        }
+    }
+
+    private void saveCurrentSelection() {
+        String name = pendingSelectionName.trim();
+        if (!SelectionStorage.isValidName(name)) {
+            Helper.HELPER.logDirect("Type a name first (letters, digits, - and _).");
+            return;
+        }
+        var sel = context.baritone().getSelectionManager().getLastSelection();
+        if (sel == null) {
+            Helper.HELPER.logDirect("No selection to save - use #sel pos1 and #sel pos2 first.");
+            return;
+        }
+        try {
+            SelectionStorage.save(net.minecraft.client.Minecraft.getInstance().gameDirectory.toPath(),
+                    name, sel.pos1(), sel.pos2());
+            Helper.HELPER.logDirect("Saved selection '" + name + "'.");
+            pendingSelectionName = "";
+            rebuildWidgets();
+        } catch (java.io.IOException e) {
+            Helper.HELPER.logDirect("Could not save the selection: " + e);
+        }
     }
 
     // -- harvest
@@ -638,6 +782,15 @@ public class ApricornGui extends Screen {
                 return true;
             }
         }
+        if (lastTab == Tab.SELECTIONS) {
+            int max = Math.max(0, TaskLocations.savedSelectionNames().size() - FARM_ROWS_VISIBLE);
+            int next = (int) Math.max(0, Math.min(max, selectionScroll - Math.signum(scrollY)));
+            if (next != selectionScroll) {
+                selectionScroll = next;
+                rebuildWidgets();
+                return true;
+            }
+        }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
@@ -744,6 +897,19 @@ public class ApricornGui extends Screen {
                         "Mapping walks the farm once so every chunk loads, recording the",
                         "paths, trees, colours and containers. Harvesting then plans over",
                         "the whole field instead of only the part you can see.");
+            }
+            case SELECTIONS -> {
+                List<String> names = TaskLocations.savedSelectionNames();
+                FlatUI.label(g, names.isEmpty()
+                        ? "No saved selections yet"
+                        : names.size() + " saved selection(s) - click one to load it", x, y - 10);
+                for (EditBox box : boxes) {
+                    box.render(g, mouseX, mouseY, partialTick);
+                }
+                note(g, x, top() + PANEL_H - 60,
+                        "These are the #save / #load selections. Task areas and farms",
+                        "refer to them by name, so deleting one leaves whatever used it",
+                        "pointing at nothing.");
             }
             case HARVEST -> {
                 FlatUI.label(g, "Reach for high apricorns (tops)", x, y + 4);
