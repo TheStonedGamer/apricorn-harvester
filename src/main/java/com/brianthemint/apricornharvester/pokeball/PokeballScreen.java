@@ -1,6 +1,7 @@
 package com.brianthemint.apricornharvester.pokeball;
 
 import com.brianthemint.apricornharvester.TaskLocations;
+import com.brianthemint.apricornharvester.ui.FlatUI;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -11,44 +12,38 @@ import net.minecraft.world.item.crafting.RecipeHolder;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 /**
  * The Poke Ball factory screen: pick a ball, a count and the travel commands, see exactly what the
  * run will mine, smelt and craft, then start it.
  *
- * <p>Drawn as a flat dark panel with its own dropdowns and buttons instead of the stone-textured
- * vanilla widgets - everything here is plain {@link GuiGraphics} fills, so it stays self-contained
- * and needs no textures.
+ * <p>Drawn with the addon's flat widget kit ({@link FlatUI}) rather than the stone-textured vanilla
+ * widgets, so it needs no textures and matches the settings screen.
  */
 public class PokeballScreen extends Screen {
 
-    // -- palette -----------------------------------------------------------------
-    private static final int BG = 0xE6101216;
-    private static final int PANEL = 0xFF1A1E24;
-    private static final int PANEL_LIGHT = 0xFF232830;
-    private static final int BORDER = 0xFF2E353F;
-    private static final int ACCENT = 0xFF4CC2FF;
-    private static final int ACCENT_DIM = 0xFF2A6E8F;
-    private static final int TEXT = 0xFFE6EAF0;
-    private static final int TEXT_DIM = 0xFF97A0AD;
-    private static final int OK = 0xFF6FCF7A;
-    private static final int BAD = 0xFFE06C6C;
+    private static final int BG = FlatUI.BG;
+    private static final int PANEL_LIGHT = FlatUI.PANEL_LIGHT;
+    private static final int BORDER = FlatUI.BORDER;
+    private static final int ACCENT = FlatUI.ACCENT;
+    private static final int TEXT = FlatUI.TEXT;
+    private static final int TEXT_DIM = FlatUI.TEXT_DIM;
+    private static final int OK = FlatUI.OK;
+    private static final int BAD = FlatUI.BAD;
 
     private static final int PANEL_W = 340;
     private static final int PANEL_H = 292;
 
     private final PokeballFactory factory;
 
-    private Dropdown<RecipeHolder<?>> ballDropdown;
-    private Dropdown<Item> fuelDropdown;
-    private Dropdown<String> farmDropdown;
+    private FlatUI.Dropdown<RecipeHolder<?>> ballDropdown;
+    private FlatUI.Dropdown<Item> fuelDropdown;
+    private FlatUI.Dropdown<String> farmDropdown;
     private EditBox countBox;
     private EditBox mineCommandBox;
     private EditBox homeCommandBox;
     private EditBox farmCommandBox;
-    private final List<FlatButton> buttons = new ArrayList<>();
+    private final List<FlatUI.Widget> buttons = new ArrayList<>();
 
     /** Cached plan preview, recomputed whenever a setting changes. */
     private CraftPlan preview;
@@ -79,7 +74,7 @@ public class PokeballScreen extends Screen {
             selected = balls.get(0);
             PokeballConfig.setBallRecipeId(selected.id().toString());
         }
-        ballDropdown = new Dropdown<>(x, y, fieldW - 90, balls, selected,
+        ballDropdown = new FlatUI.Dropdown<>(x, y, fieldW - 90, balls, selected,
                 PokeballRecipes::ballName,
                 value -> {
                     PokeballConfig.setBallRecipeId(value.id().toString());
@@ -115,7 +110,7 @@ public class PokeballScreen extends Screen {
 
         List<Item> fuels = List.of(Items.COAL, Items.CHARCOAL, Items.COAL_BLOCK, Items.BLAZE_ROD,
                 Items.DRIED_KELP_BLOCK);
-        fuelDropdown = new Dropdown<>(x, cmdY + 44, (fieldW - 8) / 2, fuels, PokeballConfig.getFuel(),
+        fuelDropdown = new FlatUI.Dropdown<>(x, cmdY + 44, (fieldW - 8) / 2, fuels, PokeballConfig.getFuel(),
                 PokeballRecipes::nameOf,
                 value -> {
                     PokeballConfig.setFuel(value);
@@ -127,7 +122,7 @@ public class PokeballScreen extends Screen {
         areas.add("(none)");
         areas.addAll(TaskLocations.savedSelectionNames());
         String currentArea = TaskLocations.getSelection(TaskLocations.Task.HARVEST);
-        farmDropdown = new Dropdown<>(x + (fieldW + 8) / 2, cmdY + 44, (fieldW - 8) / 2, areas,
+        farmDropdown = new FlatUI.Dropdown<>(x + (fieldW + 8) / 2, cmdY + 44, (fieldW - 8) / 2, areas,
                 currentArea.isEmpty() || !areas.contains(currentArea) ? areas.get(0) : currentArea,
                 name -> name,
                 name -> TaskLocations.setSelection(TaskLocations.Task.HARVEST,
@@ -142,7 +137,8 @@ public class PokeballScreen extends Screen {
         addWidget(farmCommandBox);
 
         int buttonY = top() + PANEL_H - 30;
-        buttons.add(new FlatButton(x, buttonY, 100, 20, () -> factory.isRunning() ? "Stop" : "Start",
+        buttons.add(new FlatUI.Button(x, buttonY, 100, 20,
+                () -> factory.isRunning() ? "Stop" : "Start",
                 () -> {
                     if (factory.isRunning()) {
                         factory.stop();
@@ -150,9 +146,9 @@ public class PokeballScreen extends Screen {
                         factory.start();
                     }
                 }, true));
-        buttons.add(new FlatButton(x + 108, buttonY, 100, 20, () -> "Refresh plan",
+        buttons.add(new FlatUI.Button(x + 108, buttonY, 100, 20, () -> "Refresh plan",
                 this::refreshPreview, false));
-        buttons.add(new FlatButton(left() + PANEL_W - 16 - 80, buttonY, 80, 20, () -> "Close",
+        buttons.add(new FlatUI.Button(left() + PANEL_W - 16 - 80, buttonY, 80, 20, () -> "Close",
                 this::onClose, false));
 
         refreshPreview();
@@ -189,7 +185,7 @@ public class PokeballScreen extends Screen {
             fuelDropdown.close();
             return true;
         }
-        for (FlatButton b : buttons) {
+        for (FlatUI.Widget b : buttons) {
             if (b.mouseClicked(mouseX, mouseY, button)) {
                 return true;
             }
@@ -220,7 +216,7 @@ public class PokeballScreen extends Screen {
 
         int x = left();
         int y = top();
-        panel(g, x, y, PANEL_W, PANEL_H);
+        FlatUI.panel(g, x, y, PANEL_W, PANEL_H);
 
         // title bar
         g.fill(x, y, x + PANEL_W, y + 26, PANEL_LIGHT);
@@ -250,7 +246,7 @@ public class PokeballScreen extends Screen {
 
         renderPlan(g, fx, y + 208, PANEL_W - 32);
 
-        for (FlatButton b : buttons) {
+        for (FlatUI.Widget b : buttons) {
             b.render(g, mouseX, mouseY);
         }
         // Dropdowns last so their open lists cover the panel.
@@ -289,172 +285,6 @@ public class PokeballScreen extends Screen {
             }
             g.drawString(this.font, step.describe(), x + 8, y + 8 + line * 12, TEXT, false);
             line++;
-        }
-    }
-
-    private static void panel(GuiGraphics g, int x, int y, int w, int h) {
-        g.fill(x - 1, y - 1, x + w + 1, y + h + 1, BORDER);
-        g.fill(x, y, x + w, y + h, PANEL);
-    }
-
-    // ------------------------------------------------------------------ widgets
-
-    /** Flat text button; the primary one is drawn in the accent colour. */
-    private final class FlatButton {
-        private final int x;
-        private final int y;
-        private final int w;
-        private final int h;
-        private final Supplier<String> label;
-        private final Runnable action;
-        private final boolean primary;
-
-        FlatButton(int x, int y, int w, int h, Supplier<String> label, Runnable action, boolean primary) {
-            this.x = x;
-            this.y = y;
-            this.w = w;
-            this.h = h;
-            this.label = label;
-            this.action = action;
-            this.primary = primary;
-        }
-
-        boolean mouseClicked(double mx, double my, int button) {
-            if (button != 0 || !isOver(mx, my)) {
-                return false;
-            }
-            action.run();
-            return true;
-        }
-
-        boolean isOver(double mx, double my) {
-            return mx >= x && mx < x + w && my >= y && my < y + h;
-        }
-
-        void render(GuiGraphics g, int mouseX, int mouseY) {
-            boolean hover = isOver(mouseX, mouseY);
-            int fill;
-            if (primary) {
-                fill = hover ? ACCENT : ACCENT_DIM;
-            } else {
-                fill = hover ? BORDER : PANEL_LIGHT;
-            }
-            g.fill(x, y, x + w, y + h, fill);
-            String text = label.get();
-            int tw = PokeballScreen.this.font.width(text);
-            g.drawString(PokeballScreen.this.font, text, x + (w - tw) / 2,
-                    y + (h - 8) / 2, primary ? 0xFF0A0E12 : TEXT, false);
-        }
-    }
-
-    /** Flat dropdown with a scrollable list that floats over the panel while open. */
-    private final class Dropdown<T> {
-        private static final int ROW_H = 14;
-        private static final int MAX_ROWS = 8;
-
-        private final int x;
-        private final int y;
-        private final int w;
-        private final List<T> values;
-        private final java.util.function.Function<T, String> labeller;
-        private final Consumer<T> onSelect;
-        private T selected;
-        private boolean open;
-        private int scroll;
-
-        Dropdown(int x, int y, int w, List<T> values, T selected,
-                 java.util.function.Function<T, String> labeller, Consumer<T> onSelect) {
-            this.x = x;
-            this.y = y;
-            this.w = w;
-            this.values = values;
-            this.selected = selected;
-            this.labeller = labeller;
-            this.onSelect = onSelect;
-        }
-
-        void close() {
-            open = false;
-        }
-
-        private int visibleRows() {
-            return Math.min(MAX_ROWS, values.size());
-        }
-
-        boolean mouseClicked(double mx, double my, int button) {
-            if (button != 0) {
-                return false;
-            }
-            if (mx >= x && mx < x + w && my >= y && my < y + 20) {
-                open = !open;
-                return true;
-            }
-            if (!open) {
-                return false;
-            }
-            int listTop = y + 21;
-            int rows = visibleRows();
-            if (mx >= x && mx < x + w && my >= listTop && my < listTop + rows * ROW_H) {
-                int index = scroll + (int) ((my - listTop) / ROW_H);
-                if (index >= 0 && index < values.size()) {
-                    selected = values.get(index);
-                    onSelect.accept(selected);
-                }
-                open = false;
-                return true;
-            }
-            open = false;
-            return false;
-        }
-
-        boolean mouseScrolled(double mx, double my, double scrollY) {
-            if (!open) {
-                return false;
-            }
-            int rows = visibleRows();
-            int listTop = y + 21;
-            if (mx < x || mx >= x + w || my < listTop || my >= listTop + rows * ROW_H) {
-                return false;
-            }
-            int max = Math.max(0, values.size() - rows);
-            scroll = (int) Math.max(0, Math.min(max, scroll - Math.signum(scrollY)));
-            return true;
-        }
-
-        void render(GuiGraphics g, int mouseX, int mouseY) {
-            boolean hover = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + 20;
-            g.fill(x, y, x + w, y + 20, hover || open ? BORDER : PANEL_LIGHT);
-            String text = selected == null ? "-" : labeller.apply(selected);
-            g.drawString(PokeballScreen.this.font,
-                    PokeballScreen.this.font.plainSubstrByWidth(text, w - 22),
-                    x + 6, y + 6, TEXT, false);
-            // caret
-            g.drawString(PokeballScreen.this.font, open ? "^" : "v", x + w - 12, y + 6, ACCENT, false);
-
-            if (!open) {
-                return;
-            }
-            int rows = visibleRows();
-            int listTop = y + 21;
-            g.fill(x - 1, listTop - 1, x + w + 1, listTop + rows * ROW_H + 1, BORDER);
-            g.fill(x, listTop, x + w, listTop + rows * ROW_H, PANEL);
-            for (int i = 0; i < rows; i++) {
-                int index = scroll + i;
-                if (index >= values.size()) {
-                    break;
-                }
-                int rowY = listTop + i * ROW_H;
-                boolean rowHover = mouseX >= x && mouseX < x + w && mouseY >= rowY && mouseY < rowY + ROW_H;
-                boolean isSelected = values.get(index) == selected;
-                if (rowHover) {
-                    g.fill(x, rowY, x + w, rowY + ROW_H, ACCENT_DIM);
-                } else if (isSelected) {
-                    g.fill(x, rowY, x + w, rowY + ROW_H, PANEL_LIGHT);
-                }
-                g.drawString(PokeballScreen.this.font,
-                        PokeballScreen.this.font.plainSubstrByWidth(labeller.apply(values.get(index)), w - 12),
-                        x + 6, rowY + 3, isSelected ? ACCENT : TEXT, false);
-            }
         }
     }
 }

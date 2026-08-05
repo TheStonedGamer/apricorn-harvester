@@ -34,8 +34,24 @@ public final class FlatUI {
     private FlatUI() {
     }
 
+    /**
+     * Z offset for anything that has to float above the page (open dropdown lists). Text is
+     * flushed after plain quads, so drawing later is not enough - the popup layer has to be
+     * raised and flushed while raised.
+     */
+    public static final int POPUP_Z = 400;
+
     public static Font font() {
         return Minecraft.getInstance().font;
+    }
+
+    /** Runs {@code content} on the raised popup layer, flushed before the offset is dropped. */
+    public static void onPopupLayer(GuiGraphics g, Runnable content) {
+        g.pose().pushPose();
+        g.pose().translate(0, 0, POPUP_Z);
+        content.run();
+        g.flush();
+        g.pose().popPose();
     }
 
     /** A bordered panel. */
@@ -240,8 +256,10 @@ public final class FlatUI {
                 open = false;
                 return true;
             }
+            // Clicking away closes the list and swallows the click, so the widget that happens to
+            // sit under the open list does not fire as well.
             open = false;
-            return false;
+            return true;
         }
 
         public boolean mouseScrolled(double mx, double my, double scrollY) {
@@ -267,8 +285,23 @@ public final class FlatUI {
             if (!open) {
                 return;
             }
+            renderPopup(g, mouseX, mouseY);
+        }
+
+        /**
+         * Draws the open list on its own layer.
+         *
+         * <p>{@link GuiGraphics} batches text and flushes it after the plain coloured quads, so a
+         * popup drawn later in the frame still ends up *underneath* text that was drawn earlier -
+         * which is exactly what makes a naive dropdown look transparent. Everything below is drawn
+         * at a raised Z (the same trick vanilla uses for tooltips) and flushed while the offset is
+         * still applied, so the list covers the page properly.
+         */
+        private void renderPopup(GuiGraphics g, int mouseX, int mouseY) {
             int rows = rows();
             int listTop = y + h + 1;
+            g.pose().pushPose();
+            g.pose().translate(0, 0, POPUP_Z);
             g.fill(x - 1, listTop - 1, x + w + 1, listTop + rows * ROW_H + 1, BORDER);
             g.fill(x, listTop, x + w, listTop + rows * ROW_H, PANEL);
             for (int i = 0; i < rows; i++) {
@@ -288,6 +321,8 @@ public final class FlatUI {
                         font().plainSubstrByWidth(labeller.apply(values.get(index)), w - 12),
                         x + 6, rowY + 3, isSelected ? ACCENT : TEXT, false);
             }
+            g.flush();
+            g.pose().popPose();
         }
     }
 }
