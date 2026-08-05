@@ -57,6 +57,20 @@ public final class ApricornPlanting {
         return type.saplingBlock();
     }
 
+    /**
+     * The apricorn colour of a leaves block, or null when the block is not apricorn leaves.
+     * Matched against {@link ApricornType#leavesBlock()}, so no block ids are hard-coded.
+     */
+    public static ApricornType typeOfLeaves(BlockState state) {
+        Block block = state.getBlock();
+        for (ApricornType t : ApricornType.values()) {
+            if (block == t.leavesBlock()) {
+                return t;
+            }
+        }
+        return null;
+    }
+
     public static boolean isStackOf(ItemStack stack, ApricornType type) {
         return stack != null && !stack.isEmpty() && stack.getItem() == item(type);
     }

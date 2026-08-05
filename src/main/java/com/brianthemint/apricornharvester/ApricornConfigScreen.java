@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+
 /**
  * One screen for every setting in the addon, opened with its own key binding (Options &gt;
  * Controls &gt; Apricorn Harvester) or {@code #config}.
@@ -169,6 +170,42 @@ public class ApricornConfigScreen extends Screen {
                 AddonSettings::setHarvestDeposit));
         widgets.add(new FlatUI.Stepper(x + w - 96, y + 58, 96, AddonSettings::getChestRadius,
                 AddonSettings::setChestRadius, "blocks"));
+
+        // Colour filter: one button per apricorn colour, lit when that colour is picked.
+        ApricornType[] types = ApricornPlanting.types();
+        int colourY = y + 96;
+        int buttonW = (w - 12) / 4;
+        for (int i = 0; i < types.length; i++) {
+            ApricornType type = types[i];
+            int bx = x + (i % 4) * (buttonW + 4);
+            int by = colourY + (i / 4) * 22;
+            widgets.add(new FlatUI.Button(bx, by, buttonW, 18,
+                    () -> ApricornPlanting.displayName(type),
+                    () -> {
+                        AddonSettings.setColourHarvested(type, !AddonSettings.isColourHarvested(type));
+                        // The lit/unlit state is baked in at construction, so rebuild to show it.
+                        rebuildWidgets();
+                    },
+                    AddonSettings.isColourHarvested(type)));
+        }
+        int allY = colourY + 44;
+        widgets.add(new FlatUI.Button(x, allY, buttonW, 18, () -> "All", () -> {
+            AddonSettings.setHarvestColours(Arrays.asList(ApricornPlanting.types()));
+            rebuildWidgets();
+        }, false));
+        widgets.add(new FlatUI.Button(x + buttonW + 4, allY, buttonW, 18, () -> "Invert", () -> {
+            List<ApricornType> inverted = new ArrayList<>();
+            for (ApricornType type : ApricornPlanting.types()) {
+                if (!AddonSettings.isColourHarvested(type)) {
+                    inverted.add(type);
+                }
+            }
+            // Nothing selected means "all", so an inversion that empties the set is ignored.
+            if (!inverted.isEmpty()) {
+                AddonSettings.setHarvestColours(inverted);
+            }
+            rebuildWidgets();
+        }, false));
     }
 
     private void initPlant(int x, int y, int w) {
@@ -336,8 +373,11 @@ public class ApricornConfigScreen extends Screen {
                 FlatUI.label(g, "Reach for high apricorns (tops)", x, y + 4);
                 FlatUI.label(g, "Deposit into a chest afterwards", x, y + 34);
                 FlatUI.label(g, "Chest search radius", x, y + 63);
-                note(g, x, y + 88, "The deposit pass looks this far around the selection for a",
-                        "chest, barrel or shulker box with free space.");
+                FlatUI.label(g, "Colours to harvest", x, y + 86);
+                String filter = AddonSettings.isEveryColourHarvested()
+                        ? "every colour" : ApricornHarvestProcess.colourFilterText();
+                g.drawString(this.font, filter,
+                        x + contentW() - this.font.width(filter), y + 86, FlatUI.ACCENT, false);
             }
             case PLANT -> {
                 FlatUI.label(g, "Grid spacing", x, y + 4);

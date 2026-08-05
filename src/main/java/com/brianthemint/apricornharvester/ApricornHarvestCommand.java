@@ -3,8 +3,12 @@ package com.brianthemint.apricornharvester;
 import baritone.api.command.ICommand;
 import baritone.api.command.argument.IArgConsumer;
 import baritone.api.command.helpers.TabCompleteHelper;
+import com.pixelmonmod.pixelmon.enums.items.ApricornType;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Stream;
 
 /**
@@ -47,6 +51,10 @@ public class ApricornHarvestCommand implements ICommand {
                 } else {
                     logDirect("Expected true or false, got '" + value + "'.");
                 }
+                return;
+            }
+            if (key.equalsIgnoreCase("colours") || key.equalsIgnoreCase("colors")) {
+                setColours(value);
                 return;
             }
             if (key.equalsIgnoreCase("chestradius") || key.equalsIgnoreCase("radius")) {
@@ -93,6 +101,11 @@ public class ApricornHarvestCommand implements ICommand {
                         + ". Use #apricorn deposit <true|false> to change it.");
                 return;
             }
+            if (arg.equalsIgnoreCase("colours") || arg.equalsIgnoreCase("colors")) {
+                logDirect("Harvesting " + ApricornHarvestProcess.colourFilterText()
+                        + ". Use #apricorn colours <all|red,blue,...> to change it.");
+                return;
+            }
             if (arg.equalsIgnoreCase("chestradius") || arg.equalsIgnoreCase("radius")) {
                 logDirect("Chest search radius = " + AddonSettings.getChestRadius()
                         + " blocks. Use #apricorn chestradius <blocks> to change it.");
@@ -105,11 +118,54 @@ public class ApricornHarvestCommand implements ICommand {
         process.start();
     }
 
+    /**
+     * Applies {@code #apricorn colours <value>}: either {@code all} or a comma-separated list of
+     * apricorn colours. An unknown colour aborts the whole change rather than silently dropping
+     * part of it.
+     */
+    private void setColours(String value) {
+        if (value.equalsIgnoreCase("all") || value.equalsIgnoreCase("any")) {
+            AddonSettings.setHarvestColours(Arrays.asList(ApricornPlanting.types()));
+            logDirect("Harvesting all colours.");
+            return;
+        }
+        List<ApricornType> picked = new ArrayList<>();
+        for (String part : value.split("[,\\s]+")) {
+            if (part.isBlank()) {
+                continue;
+            }
+            ApricornType type = ApricornPlanting.parse(part);
+            if (type == null) {
+                logDirect("Unknown apricorn colour '" + part + "'. Colours: " + colourNames());
+                return;
+            }
+            picked.add(type);
+        }
+        if (picked.isEmpty()) {
+            logDirect("Name at least one colour, or 'all'. Colours: " + colourNames());
+            return;
+        }
+        AddonSettings.setHarvestColours(picked);
+        logDirect("Harvesting " + ApricornHarvestProcess.colourFilterText() + ".");
+    }
+
+    private static String colourNames() {
+        StringBuilder sb = new StringBuilder();
+        for (ApricornType type : ApricornPlanting.types()) {
+            if (sb.length() > 0) {
+                sb.append(", ");
+            }
+            sb.append(type.name().toLowerCase(Locale.ROOT));
+        }
+        return sb.toString();
+    }
+
     @Override
     public Stream<String> tabComplete(String label, IArgConsumer args) {
         if (args.hasExactlyOne()) {
             return new TabCompleteHelper()
-                    .append("start", "stop", "pause", "resume", "tops", "deposit", "chestradius")
+                    .append("start", "stop", "pause", "resume", "tops", "deposit", "chestradius",
+                            "colours")
                     .filterPrefix(args.peekString()).stream();
         }
         if (args.hasExactly(2)) {
@@ -117,6 +173,13 @@ public class ApricornHarvestCommand implements ICommand {
             if (first.equalsIgnoreCase("tops") || first.equalsIgnoreCase("deposit")) {
                 return new TabCompleteHelper().append("true", "false")
                         .filterPrefix(args.peekString(1)).stream();
+            }
+            if (first.equalsIgnoreCase("colours") || first.equalsIgnoreCase("colors")) {
+                TabCompleteHelper helper = new TabCompleteHelper().append("all");
+                for (ApricornType type : ApricornPlanting.types()) {
+                    helper.append(type.name().toLowerCase(Locale.ROOT));
+                }
+                return helper.filterPrefix(args.peekString(1)).stream();
             }
         }
         return Stream.empty();
@@ -148,6 +211,10 @@ public class ApricornHarvestCommand implements ICommand {
                 "> #apricorn deposit false do not deposit (apricorns stay in inventory)",
                 "> #apricorn deposit      show the current value",
                 "> #apricorn chestradius 24  how far to look for a container to deposit into",
+                "> #apricorn colours red      harvest only red apricorns",
+                "> #apricorn colours red,blue harvest only those colours",
+                "> #apricorn colours all      harvest every colour (the default)",
+                "> #apricorn colours          show the current filter",
                 "",
                 "With deposit enabled, after the bot picks up all drops it scans the area",
                 "around the selection for a chest, barrel, or shulker box with empty slots.",

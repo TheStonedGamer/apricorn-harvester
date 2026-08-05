@@ -8,6 +8,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.EnumSet;
 import java.util.List;
 
 /**
@@ -29,6 +31,13 @@ public final class AddonSettings {
     private static int chestRadius = 16;
     public static final int MIN_CHEST_RADIUS = 4;
     public static final int MAX_CHEST_RADIUS = 64;
+
+    /**
+     * Apricorn colours the harvester picks. Anything not in the set is left on the tree, so a run
+     * can top up one colour without stripping the whole farm. Empty is treated as "all", because a
+     * harvest that can never pick anything is never what someone meant.
+     */
+    private static final EnumSet<ApricornType> HARVEST_COLOURS = EnumSet.allOf(ApricornType.class);
 
     // -- bone meal
     /** Bone meal applications spent on one sapling before it is given up on. */
@@ -76,6 +85,42 @@ public final class AddonSettings {
         save();
     }
 
+    /** True when the harvester should pick this colour. */
+    public static boolean isColourHarvested(ApricornType type) {
+        ensureLoaded();
+        return HARVEST_COLOURS.isEmpty() || HARVEST_COLOURS.contains(type);
+    }
+
+    public static void setColourHarvested(ApricornType type, boolean harvested) {
+        ensureLoaded();
+        if (harvested) {
+            HARVEST_COLOURS.add(type);
+        } else {
+            HARVEST_COLOURS.remove(type);
+        }
+        save();
+    }
+
+    /** The colours currently selected, in Pixelmon's declaration order. */
+    public static EnumSet<ApricornType> getHarvestColours() {
+        ensureLoaded();
+        return EnumSet.copyOf(HARVEST_COLOURS.isEmpty()
+                ? EnumSet.allOf(ApricornType.class) : HARVEST_COLOURS);
+    }
+
+    public static void setHarvestColours(Collection<ApricornType> colours) {
+        ensureLoaded();
+        HARVEST_COLOURS.clear();
+        HARVEST_COLOURS.addAll(colours);
+        save();
+    }
+
+    /** True when every colour is selected, i.e. nothing is being filtered out. */
+    public static boolean isEveryColourHarvested() {
+        ensureLoaded();
+        return HARVEST_COLOURS.isEmpty() || HARVEST_COLOURS.size() == ApricornType.values().length;
+    }
+
     public static int getBonemealMax() {
         ensureLoaded();
         return bonemealMax;
@@ -121,6 +166,18 @@ public final class AddonSettings {
                     case "harvest.tops" -> harvestTops = Boolean.parseBoolean(value);
                     case "harvest.deposit" -> harvestDeposit = Boolean.parseBoolean(value);
                     case "harvest.chestRadius" -> chestRadius = parseInt(value, chestRadius);
+                    case "harvest.colours" -> {
+                        HARVEST_COLOURS.clear();
+                        for (String name : value.split(",")) {
+                            ApricornType type = ApricornPlanting.parse(name.trim());
+                            if (type != null) {
+                                HARVEST_COLOURS.add(type);
+                            }
+                        }
+                        if (HARVEST_COLOURS.isEmpty()) {
+                            HARVEST_COLOURS.addAll(EnumSet.allOf(ApricornType.class));
+                        }
+                    }
                     case "bonemeal.max" -> bonemealMax = parseInt(value, bonemealMax);
                     case "plant.spacing" -> PlantConfig.setSpacingQuiet(parseInt(value,
                             PlantConfig.getSpacing()));
@@ -165,6 +222,14 @@ public final class AddonSettings {
         lines.add("harvest.tops=" + harvestTops);
         lines.add("harvest.deposit=" + harvestDeposit);
         lines.add("harvest.chestRadius=" + chestRadius);
+        StringBuilder colours = new StringBuilder();
+        for (ApricornType type : HARVEST_COLOURS) {
+            if (colours.length() > 0) {
+                colours.append(',');
+            }
+            colours.append(type.name());
+        }
+        lines.add("harvest.colours=" + colours);
         lines.add("bonemeal.max=" + bonemealMax);
         lines.add("plant.spacing=" + PlantConfig.getSpacing());
         lines.add("plant.clearance=" + PlantConfig.getClearance());

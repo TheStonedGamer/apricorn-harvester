@@ -61,12 +61,21 @@ The bot walks the selection bush by bush, standing only on columns with a walkab
 apricorn, then walks around the bush to pick up what fell before moving on. Apricorns it cannot reach
 from a path are left standing.
 
+**Colour filter.** By default every colour is picked. Pick one, a set, or all — handy for topping up
+a single colour without stripping the farm. Set it on the Harvest tab of the settings screen (a
+button per colour, plus All and Invert) or in chat. Colours the filter excludes are never clustered,
+walked to or clicked, so the run only visits trees it actually wants.
+
 ```
 #apricorn                 start
 #apricorn stop|pause|resume
 #apricorn tops true       after the patrol, also try high apricorns (towers up on dirt)
 #apricorn deposit true    afterwards, find a container and deposit the crop
 #apricorn chestradius 24  how far around the selection to look for that container (4-64)
+#apricorn colours red     harvest only red apricorns
+#apricorn colours red,blue   harvest only those colours
+#apricorn colours all     harvest every colour (the default)
+#apricorn colours         show the current filter
 ```
 
 Baritone's own `#pause` / `#resume` also freeze and continue a run.
@@ -171,9 +180,11 @@ Tasks: `harvest`, `plant`, `bonemeal`, `mine`, `craft`. The factory uses `mine`,
 
 ## Settings and hotkeys
 
-`#config` or **G** opens the settings screen: harvesting (tops, deposit, chest search radius),
-planting (spacing, clearance, row direction, default colour), bone meal (applications per sapling),
-and the task areas table. Changes save as you make them.
+`#config` or **G** opens the settings screen: harvesting (tops, deposit, chest search radius, colour
+filter), planting (spacing, clearance, row snap, row direction, default colour), bone meal
+(applications per sapling), and the task areas table. Every tab has **Run** and **Cancel** for its
+job — Run loads that task's saved area first — and each area row has a **Go** button. Changes save as
+you make them.
 
 | Key | Screen |
 | --- | --- |

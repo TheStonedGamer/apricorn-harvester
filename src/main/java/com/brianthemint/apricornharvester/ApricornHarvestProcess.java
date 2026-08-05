@@ -13,6 +13,7 @@ import baritone.api.selection.ISelection;
 import baritone.api.utils.Helper;
 import baritone.api.utils.IPlayerContext;
 import baritone.api.utils.Rotation;
+import com.pixelmonmod.pixelmon.enums.items.ApricornType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -241,6 +242,36 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         this.ctx = baritone.getPlayerContext();
     }
 
+    /**
+     * True for an apricorn this run should actually pick: ripe, and of a colour the colour filter
+     * allows ({@code #apricorn colours ...} / the settings screen). Everything the harvester looks
+     * at goes through here, so an unwanted colour is never clustered, walked to or clicked.
+     */
+    private static boolean isWanted(BlockState state) {
+        if (!ApricornBlocks.isMature(state)) {
+            return false;
+        }
+        ApricornType type = ApricornPlanting.typeOfLeaves(state);
+        return type == null || AddonSettings.isColourHarvested(type);
+    }
+
+    /** "only Red, Blue" - the colour filter in words, for chat. */
+    public static String colourFilterText() {
+        if (AddonSettings.isEveryColourHarvested()) {
+            return "all colours";
+        }
+        StringBuilder sb = new StringBuilder("only ");
+        boolean first = true;
+        for (ApricornType type : AddonSettings.getHarvestColours()) {
+            if (!first) {
+                sb.append(", ");
+            }
+            sb.append(ApricornPlanting.displayName(type));
+            first = false;
+        }
+        return sb.toString();
+    }
+
     /** Chat/log helpers; IBaritoneProcess does not extend Helper, so delegate to the API singleton. */
     private static void logDirect(String message) {
         Helper.HELPER.logDirect(message);
@@ -339,7 +370,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                     if (ApricornBlocks.isApricornLog(state)) {
                         logs.add(pos);
                     }
-                    if (ApricornBlocks.isMature(state)) {
+                    if (isWanted(state)) {
                         mature.add(pos);
                     }
                 }
@@ -389,7 +420,10 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         this.patrolDone = this.bushes.isEmpty();
 
         this.running = true;
-        logDirect("Apricorn harvesting started in selection " + selMin + " -> " + selMax + ". Found " + this.bushes.size() + " bushes.");
+        logDirect("Apricorn harvesting started in selection " + selMin + " -> " + selMax
+                + ". Found " + this.bushes.size() + " bushes"
+                + (AddonSettings.isEveryColourHarvested() ? "" : " (" + colourFilterText() + ")")
+                + ".");
     }
 
     /**
@@ -555,7 +589,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
 
             List<BlockPos> remaining = new ArrayList<>();
             for (BlockPos p : bush.matureBlocks) {
-                if (ApricornBlocks.isMature(ctx.world().getBlockState(p)) && clickAttempts.getOrDefault(p, 0) < MAX_CLICK_ATTEMPTS) {
+                if (isWanted(ctx.world().getBlockState(p)) && clickAttempts.getOrDefault(p, 0) < MAX_CLICK_ATTEMPTS) {
                     remaining.add(p);
                 }
             }
@@ -657,7 +691,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
             for (int z = selMin.getZ(); z <= selMax.getZ(); z++) {
                 for (int y = selMin.getY(); y <= selMax.getY(); y++) {
                     BlockPos pos = new BlockPos(x, y, z);
-                    if (!ApricornBlocks.isMature(ctx.world().getBlockState(pos))
+                    if (!isWanted(ctx.world().getBlockState(pos))
                             || clickAttempts.getOrDefault(pos, 0) >= MAX_CLICK_ATTEMPTS) {
                         continue;
                     }
@@ -816,7 +850,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                 for (int y = stand.getY() + 1; y <= selMax.getY(); y++) {
                     BlockPos pos = new BlockPos(x, y, z);
                     BlockState state = ctx.world().getBlockState(pos);
-                    if (ApricornBlocks.isMature(state)
+                    if (isWanted(state)
                             && elevatedEye.distanceToSqr(nearestPointOnBlock(elevatedEye, pos)) <= reachSq()
                             && clickAttempts.getOrDefault(pos, 0) < MAX_CLICK_ATTEMPTS) {
                         return true;
@@ -845,7 +879,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                 for (int y = selMin.getY(); y <= selMax.getY(); y++) {
                     BlockPos pos = new BlockPos(x, y, z);
                     BlockState state = ctx.world().getBlockState(pos);
-                    if (ApricornBlocks.isMature(state)
+                    if (isWanted(state)
                             && eye.distanceToSqr(nearestPointOnBlock(eye, pos)) <= reachSq()
                             && clickAttempts.getOrDefault(pos, 0) < MAX_CLICK_ATTEMPTS) {
                         clickQueue.add(pos);
@@ -1030,7 +1064,7 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         for (int x = selMin.getX(); x <= selMax.getX(); x++) {
             for (int z = selMin.getZ(); z <= selMax.getZ(); z++) {
                 for (int y = selMin.getY(); y <= selMax.getY(); y++) {
-                    if (ApricornBlocks.isMature(ctx.world().getBlockState(new BlockPos(x, y, z)))) {
+                    if (isWanted(ctx.world().getBlockState(new BlockPos(x, y, z)))) {
                         n++;
                     }
                 }
