@@ -148,6 +148,13 @@ farm → harvest apricorns → travel to the crafting base → furnaces → craf
 through the vanilla recipe-book placement call, which is what makes the data components on lids and
 balls come out right.
 
+**Smelting uses every furnace in range** (up to 12), not just the nearest — it is the slow part of a
+run at 10 seconds an item, so a bank of furnaces divides the wait. The bot loads each one with fuel
+and a share of the batch, then keeps walking the round, pulling what has finished and topping the
+input back up; when a whole lap yields nothing it waits rather than pacing. Only ordinary furnaces
+are used: a blast furnace would halve the time on ores but refuses apricorns, and one run smelts
+both.
+
 ```
 #pokeball                 start a run
 #pokeball gui             the factory screen (key J)

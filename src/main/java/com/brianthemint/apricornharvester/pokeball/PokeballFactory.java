@@ -52,6 +52,14 @@ public final class PokeballFactory {
     private static final int SMELT_TIMEOUT = 20 * 60 * 15;
     /** Items one fuel item smelts (coal/charcoal); used to size the fuel demand. */
     private static final int ITEMS_PER_FUEL = 8;
+    /** Most furnaces a run will juggle. Beyond this the walking costs more than it saves. */
+    private static final int MAX_FURNACES = 12;
+    /** Fuel kept in each furnace's fuel slot. */
+    private static final int FUEL_PER_FURNACE = 8;
+    /** Input kept in each furnace, so the batch spreads over the bank instead of filling one. */
+    private static final int INPUT_PER_FURNACE = 16;
+    /** Ticks to stand still after a lap that collected nothing, rather than pacing about. */
+    private static final int SMELT_LAP_PAUSE = 60;
 
     private enum Stage { IDLE, TRAVEL_TO_MINE, STEP, TRAVEL_HOME, TRAVEL_FARM, DONE }
 
@@ -75,6 +83,12 @@ public final class PokeballFactory {
 
     /** Station (furnace / crafting table) the current step is working at. */
     private BlockPos station;
+    /** Every furnace the current smelting step is using, visited in a round. */
+    private List<BlockPos> furnaces = new ArrayList<>();
+    /** Which of {@link #furnaces} the bot is at. */
+    private int furnaceIndex;
+    /** Whether the current lap of the furnaces collected or loaded anything. */
+    private boolean lapProgressed;
     /** Item count of the step's output when the step started, so progress is measured, not totals. */
     private int baselineCount;
     /** Crafts already placed in the current crafting step. */
@@ -190,6 +204,8 @@ public final class PokeballFactory {
         steps = new ArrayList<>();
         stepIndex = 0;
         station = null;
+        furnaces = new ArrayList<>();
+        furnaceIndex = 0;
         try {
             baritone.getMineProcess().cancel();
             baritone.getCustomGoalProcess().setGoal(null);
@@ -309,6 +325,9 @@ public final class PokeballFactory {
         craftsDone = 0;
         smeltQueued = 0;
         smeltCollected = 0;
+        furnaces = new ArrayList<>();
+        furnaceIndex = 0;
+        lapProgressed = false;
     }
 
     // ------------------------------------------------------------------ mining
@@ -400,14 +419,23 @@ public final class PokeballFactory {
     // ------------------------------------------------------------------ smelting
 
     /**
-     * Smelts the step's input in the nearest furnace: shift-click fuel and input in, wait for the
-     * output to appear, shift-click it out, repeat until the whole batch is done.
+     * Smelts the step's input across <em>every</em> furnace in range, not just the nearest one.
+     *
+     * <p>Smelting is the slowest part of a run (10 seconds per item in a vanilla furnace), so a
+     * bank of furnaces should divide the wait, not sit idle. The bot loads each furnace in turn
+     * with fuel and a share of the batch, then keeps walking the round: at every furnace it pulls
+     * whatever has finished, tops the input back up while there is anything left to cook, and moves
+     * on. When a full lap produces nothing it waits a moment before the next lap instead of
+     * spinning on the spot.
+     *
+     * <p>Only ordinary furnaces are used. A blast furnace would halve the time on ores but refuses
+     * anything else - including apricorns - and the plan mixes both kinds of input in one run.
      */
     private boolean tickSmelt(CraftPlan.Step step) {
         switch (phase) {
             case START: {
-                station = findStation(Blocks.FURNACE, Blocks.BLAST_FURNACE);
-                if (station == null) {
+                furnaces = findStations(MAX_FURNACES, Blocks.FURNACE);
+                if (furnaces.isEmpty()) {
                     finish("No furnace within " + PokeballConfig.getStationRadius()
                             + " blocks. Stand near your furnaces (or raise #pokeball radius).");
                     return false;
@@ -418,11 +446,14 @@ public final class PokeballFactory {
                             + ": need " + fuelNeeded + " to smelt " + step.smeltCount + " items.");
                     return false;
                 }
+                furnaceIndex = 0;
                 smeltQueued = 0;
                 smeltCollected = 0;
+                lapProgressed = false;
                 baselineCount = count(step.output);
+                station = furnaces.get(0);
                 logDirect("Smelting " + step.smeltCount + "x " + PokeballRecipes.nameOf(step.smeltInput)
-                        + " at " + station + "...");
+                        + " across " + furnaces.size() + " furnace(s)...");
                 phase = StepPhase.WALK;
                 phaseTicks = 0;
                 return false;
@@ -448,54 +479,67 @@ public final class PokeballFactory {
                     return false;
                 }
                 // Furnace menu: 0 = input, 1 = fuel, 2 = output, then the player inventory.
-                if (menu.getSlot(1).getItem().getCount() < 8
-                        && quickMoveFirst(menu, PokeballConfig.getFuel())) {
-                    return false;
-                }
-                if (smeltQueued < step.smeltCount && menu.getSlot(0).getItem().getCount() < 32
-                        && quickMoveFirst(menu, step.smeltInput)) {
-                    smeltQueued = Math.min(step.smeltCount, smeltQueued + menu.getSlot(0).getItem().getCount());
-                    return false;
-                }
-                phase = StepPhase.WAIT;
-                phaseTicks = 0;
-                return false;
-            }
-            case WAIT: {
-                AbstractContainerMenu menu = player().containerMenu;
-                if (menu == null || menu.slots.size() < 3) {
-                    phase = StepPhase.OPEN;
-                    return false;
-                }
-                phaseTicks++;
                 ItemStack output = menu.getSlot(2).getItem();
                 if (!output.isEmpty()) {
                     click(menu, 2, ClickType.QUICK_MOVE);
                     smeltCollected += output.getCount();
+                    lapProgressed = true;
                     return false;
                 }
-                int produced = count(step.output) - baselineCount;
-                if (produced >= step.count) {
-                    phase = StepPhase.CLOSE;
-                    return false;
+                if (smeltQueued < step.smeltCount) {
+                    if (menu.getSlot(1).getItem().getCount() < FUEL_PER_FURNACE
+                            && quickMoveFirst(menu, PokeballConfig.getFuel())) {
+                        return false;
+                    }
+                    int inInput = menu.getSlot(0).getItem().getCount();
+                    if (inInput < INPUT_PER_FURNACE && quickMoveFirst(menu, step.smeltInput)) {
+                        // The shift-click moves a whole stack; count what actually landed.
+                        smeltQueued = Math.min(step.smeltCount,
+                                smeltQueued + Math.max(1, menu.getSlot(0).getItem().getCount() - inInput));
+                        lapProgressed = true;
+                        return false;
+                    }
                 }
-                // Input empty and everything queued has come out: feed the next batch.
-                if (menu.getSlot(0).getItem().isEmpty() && smeltQueued < step.smeltCount) {
-                    phase = StepPhase.WORK;
-                    return false;
-                }
-                if (phaseTicks > SMELT_TIMEOUT) {
-                    closeScreen();
-                    finish("Smelting timed out (" + produced + "/" + step.count + " done).");
-                    return false;
-                }
+                phase = StepPhase.CLOSE;
                 return false;
             }
             case CLOSE: {
                 closeScreen();
-                logDirect("Smelted " + (count(step.output) - baselineCount) + "x "
-                        + PokeballRecipes.nameOf(step.output) + ".");
-                return true;
+                int produced = count(step.output) - baselineCount;
+                if (produced >= step.count) {
+                    logDirect("Smelted " + produced + "x " + PokeballRecipes.nameOf(step.output)
+                            + " in " + furnaces.size() + " furnace(s).");
+                    furnaces = new ArrayList<>();
+                    return true;
+                }
+                furnaceIndex++;
+                if (furnaceIndex >= furnaces.size()) {
+                    furnaceIndex = 0;
+                    // A whole lap with nothing collected and nothing left to load: the furnaces are
+                    // simply cooking. Stand still for a moment rather than pacing between them.
+                    if (!lapProgressed) {
+                        phase = StepPhase.WAIT;
+                        phaseTicks = 0;
+                        return false;
+                    }
+                    lapProgressed = false;
+                }
+                station = furnaces.get(furnaceIndex);
+                phase = StepPhase.WALK;
+                phaseTicks = 0;
+                return false;
+            }
+            case WAIT: {
+                phaseTicks++;
+                if (phaseTicks >= SMELT_LAP_PAUSE) {
+                    phase = StepPhase.WALK;
+                    phaseTicks = 0;
+                }
+                if (phaseTicks > SMELT_TIMEOUT) {
+                    finish("Smelting timed out (" + (count(step.output) - baselineCount)
+                            + "/" + step.count + " done).");
+                }
+                return false;
             }
             default:
                 return false;
@@ -602,6 +646,32 @@ public final class PokeballFactory {
             }
         }
         return total;
+    }
+
+    /**
+     * Up to {@code limit} blocks of the given types within the configured radius, nearest first.
+     * Used to find the whole bank of furnaces rather than a single one.
+     */
+    private List<BlockPos> findStations(int limit, net.minecraft.world.level.block.Block... blocks) {
+        BlockPos origin = player().blockPosition();
+        int r = PokeballConfig.getStationRadius();
+        List<BlockPos> found = new ArrayList<>();
+        for (int x = -r; x <= r; x++) {
+            for (int z = -r; z <= r; z++) {
+                for (int y = -8; y <= 8; y++) {
+                    BlockPos pos = origin.offset(x, y, z);
+                    BlockState state = mc().level.getBlockState(pos);
+                    for (net.minecraft.world.level.block.Block block : blocks) {
+                        if (state.is(block)) {
+                            found.add(pos);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        found.sort(Comparator.comparingDouble(pos -> pos.distSqr(origin)));
+        return found.size() > limit ? new ArrayList<>(found.subList(0, limit)) : found;
     }
 
     /** Nearest block of any of the given types within the configured radius, or null. */
