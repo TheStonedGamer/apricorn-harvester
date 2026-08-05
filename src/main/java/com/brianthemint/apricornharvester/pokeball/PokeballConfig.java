@@ -6,7 +6,7 @@ import net.minecraft.world.item.Items;
 
 /**
  * Settings for the Poke Ball factory: what to make, how much, and the server commands used to get
- * to the mining area and back home. Shared by the GUI ({@link PokeballScreen}) and the
+ * to the mining area and back home. Shared by the addon window (Poke Balls tab) and the
  * {@code #pokeball} command; the factory reads it when a run starts.
  */
 public final class PokeballConfig {

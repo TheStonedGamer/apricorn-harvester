@@ -18,8 +18,8 @@ every job except mining, so no leaf, log or build of yours is ever broken.
 | Ore | `#ore` | Mines a single ore (platinum, silver, …) on its own, out and back |
 | Hunt | `#hunt` | Finds wild apricorn trees, defaulting to the colours you have none of |
 | Areas | `#loc` | Remembers a saved selection **and** a travel command (`/home`, `/warp`, `/rtp`) per job |
-| Settings | `#config` | One screen for every setting, persisted to disk |
-| Help | `#ah` | The addon's own command overview, in chat or as a screen |
+| Window | **G** | One tabbed window for every job and setting (also `#config`) |
+| Help | `#ah` | The addon's own command overview, in chat or in the window |
 
 > **Status:** the harvester and planter have been used in-game. The bone-mealer and the Poke Ball
 > factory are newer and are **not yet runtime-tested** — start with `#pokeball plan`, which only
@@ -40,7 +40,7 @@ addon without them. Drop all three jars into `mods/`.
 
 1. Download `apricornharvester-1.0.0.jar` from the releases page (or build it, below).
 2. Put it in `.minecraft/mods/` next to the Baritone API jar and Pixelmon.
-3. Launch. `#ah` in chat prints the command overview; **G** opens the settings screen.
+3. Launch. **G** opens the addon window; `#ah` prints the command overview in chat.
 
 ## Quick start
 
@@ -79,7 +79,7 @@ over the whole farm without walking it again.
 
 Once a farm is selected, `#apricorn` seeds its plan from the map — stands in unloaded chunks are kept
 and checked on arrival instead of being dropped — and the selection is set to the farm's bounds, so
-the other commands need no `#sel` step. The **Farms** tab of the settings screen does the same with a
+the other commands need no `#sel` step. The **Farms** tab of the window does the same with a
 dropdown and Map / Re-map / Cancel buttons.
 
 ## Harvesting — `#apricorn`
@@ -93,7 +93,7 @@ This suits the usual layout of 3×3×3 bushes with 1-wide paths between them, wh
 touches up to four bushes: each stand is visited once instead of once per neighbouring bush.
 
 **Colour filter.** By default every colour is picked. Pick one, a set, or all — handy for topping up
-a single colour without stripping the farm. Set it on the Harvest tab of the settings screen (a
+a single colour without stripping the farm. Set it on the Harvest tab of the window (a
 button per colour, plus All and Invert) or in chat. Colours the filter excludes are never clustered,
 walked to or clicked, so the run only visits trees it actually wants.
 
@@ -139,7 +139,7 @@ the rest of that colour's spots are skipped and reported.
 
 ```
 #plant                    start planting
-#plant gui                the planting screen (key K)
+#plant gui                open the window on the Row colours tab
 #plant spacing 3          grid spacing in blocks (1-16)
 #plant clearance 2        blocks kept free from walls and the border (0-8)
 #plant snap 1             how far a plant may shift off the grid to find soil (0-4)
@@ -155,7 +155,7 @@ In the planting screen, **left-click cycles a colour forwards, right-click backw
 
 Visits every apricorn sapling (`pixelmon:apricorn_plant_*`) in the selection from the path beside it
 and applies bone meal until it becomes a tree — up to 32 applications per sapling by default,
-configurable in the settings screen. Bone meal comes from the hotbar or the main inventory; the run
+configurable in the window. Bone meal comes from the hotbar or the main inventory; the run
 ends as soon as you are out.
 
 ```
@@ -194,7 +194,7 @@ both.
 
 ```
 #pokeball                 start a run
-#pokeball gui             the factory screen (key J)
+#pokeball gui             open the window on the Poke Balls tab
 #pokeball plan            dry run - what it would mine, harvest, smelt and craft
 #pokeball list            every ball recipe the server has
 #pokeball ball great ball / #pokeball count 32
@@ -222,21 +222,27 @@ selection (`#save <name>`) and the server command that gets there.
 Tasks: `harvest`, `plant`, `bonemeal`, `mine`, `craft`. The factory uses `mine`, `harvest` and
 `craft` automatically. Leave a command empty to skip that teleport and work where you stand.
 
-## Settings and hotkeys
+## The window
 
-`#config` or **G** opens the settings screen: harvesting (tops, deposit, chest search radius, colour
-filter), planting (spacing, clearance, row snap, row direction, default colour), bone meal
-(applications per sapling), and the task areas table. Every tab has **Run** and **Cancel** for its
-job — Run loads that task's saved area first — and each area row has a **Go** button. Changes save as
-you make them.
+Everything lives in one window on one key: **G**, or `#config`. Rebind it under
+**Options → Controls → Apricorn Harvester**.
 
-| Key | Screen |
+| Tab | What it holds |
 | --- | --- |
-| **G** | Settings |
-| **K** | Planting (per-row colours) |
-| **J** | Poke Ball factory |
+| **Farms** | Pick the surveyed farm to work on; Map / Re-map |
+| **Harvest** | Tops, deposit, chest search radius, colour filter; Run |
+| **Planting** | Spacing, wall clearance, row snap, row direction, default colour; Run |
+| **Row colours** | One row per line — left click for the next colour, right click for the previous |
+| **Bone meal** | Applications per sapling; Run |
+| **Poke Balls** | Ball, amount, fuel, station radius, live plan preview; Run |
+| **Mine & hunt** | Mine one ore, or hunt the colours you are missing |
+| **Task areas** | Saved area and travel command per task, each with a Go button |
+| **Help** | The same cheat sheets as `#ah` |
 
-All three are rebindable under **Options → Controls → Apricorn Harvester**.
+Each job tab carries its own **Run** / **Cancel**; Run loads that task's saved area first, closes the
+window and refuses to start while another job is running. The title bar shows what is running. The
+window reopens on the tab you last used, and `#plant gui`, `#pokeball gui` and `#ah gui` open it
+directly on theirs. Settings save as you change them.
 
 Files written under `.minecraft/baritone/`:
 
@@ -285,19 +291,23 @@ src/main/java/com/brianthemint/apricornharvester/
   ApricornPlantProcess.java      planting: grid walk, equip, right-click, verify
   ApricornBonemealProcess.java   bone-mealing every sapling until it grows
   Apricorn*Command.java          the #apricorn, #plant, #bonemeal, #config, #ah commands
-  Apricorn*Screen.java           planting, settings and help screens
+  ApricornGui.java               the single tabbed window: every job and setting
   PlantConfig.java               grid settings and per-row colours
   AddonSettings.java             every scalar setting, persisted
   TaskLocations.java             saved area + travel command per task
   SelectionStorage.java          .sel files behind #save / #load
-  ApricornKeybinds.java          the three key bindings, and the factory's tick
+  ApricornKeybinds.java          the one key binding, and the tick controllers
+  AddonContext.java              Baritone plus every job, shared by the window and commands
+  FarmMap / FarmMapper / FarmSelection.java   surveying a farm and working on it by name
+  OreMineController.java         #ore, standalone ore mining
+  ApricornHunter.java            #hunt, finding colours you do not have
   ui/FlatUI.java                 flat widget kit: button, toggle, stepper, dropdown
   pokeball/
     PokeballRecipes.java         reads the ball recipe tree, plans a run
     CraftPlan.java               the mine/harvest/smelt/craft step list
     PokeballFactory.java         the executor: travel, mining, furnaces, crafting
     PokeballConfig.java          ball, count, fuel, search radius
-    PokeballScreen.java          the factory GUI
+
     PokeballCommand.java         the #pokeball command
 ```
 

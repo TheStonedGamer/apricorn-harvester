@@ -8,8 +8,8 @@ import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * {@code #config} command: opens {@link ApricornConfigScreen}, the one screen that holds every
- * setting. The same screen is on a key binding (Options &gt; Controls &gt; Apricorn Harvester).
+ * {@code #config} command: opens {@link ApricornGui}, the addon's single window. The same window is
+ * on a key binding (Options &gt; Controls &gt; Apricorn Harvester).
  */
 public class ApricornConfigCommand implements ICommand {
 
@@ -21,7 +21,7 @@ public class ApricornConfigCommand implements ICommand {
 
     @Override
     public void execute(String label, IArgConsumer args) {
-        Minecraft.getInstance().setScreen(new ApricornConfigScreen(context));
+        ApricornGui.open(ApricornGui.Tab.HARVEST);
     }
 
     @Override

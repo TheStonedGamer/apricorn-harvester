@@ -14,7 +14,7 @@ import java.util.stream.Stream;
 
 /**
  * {@code #plant} command: plants apricorns on a grid inside the current Baritone selection,
- * with a per-row colour. The same settings are editable in the GUI ({@link ApricornPlantScreen},
+ * with a per-row colour. The same settings are editable in the addon window (the Row colours tab,
  * bound to a key in Minecraft's controls).
  */
 public class ApricornPlantCommand implements ICommand {
@@ -51,7 +51,7 @@ public class ApricornPlantCommand implements ICommand {
                 process.resume();
                 return;
             case "gui":
-                Minecraft.getInstance().setScreen(new ApricornPlantScreen(baritone, process));
+                ApricornGui.open(ApricornGui.Tab.ROWS);
                 return;
             case "spacing": {
                 if (!args.hasAny()) {

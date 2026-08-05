@@ -62,6 +62,7 @@ public final class ApricornHarvesterMod {
             // Bring back the farm that was selected last session, if it still exists.
             FarmSelection.restore();
             ApricornKeybinds.setContext(context);
+            ApricornGui.setContext(context);
             baritone.getCommandManager().getRegistry().register(new ApricornHarvestCommand(process));
             baritone.getCommandManager().getRegistry().register(new ApricornPlantCommand(baritone, plantProcess));
             baritone.getCommandManager().getRegistry().register(new ApricornBonemealCommand(bonemealProcess));

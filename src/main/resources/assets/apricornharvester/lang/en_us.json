@@ -1,6 +1,4 @@
 {
   "key.categories.apricornharvester": "Apricorn Harvester",
-  "key.apricornharvester.plant_gui": "Open Apricorn Planting GUI",
-  "key.apricornharvester.pokeball_gui": "Open Poke Ball Factory GUI",
-  "key.apricornharvester.config_gui": "Open Apricorn Harvester Settings"
+  "key.apricornharvester.gui": "Open Apricorn Harvester"
 }

@@ -1,6 +1,5 @@
 package com.brianthemint.apricornharvester;
 
-import com.brianthemint.apricornharvester.pokeball.PokeballScreen;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -21,20 +20,12 @@ public final class ApricornKeybinds {
 
     public static final String CATEGORY = "key.categories.apricornharvester";
 
-    public static final KeyMapping OPEN_PLANT_GUI = new KeyMapping(
-            "key.apricornharvester.plant_gui",
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_K,
-            CATEGORY);
-
-    public static final KeyMapping OPEN_POKEBALL_GUI = new KeyMapping(
-            "key.apricornharvester.pokeball_gui",
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_J,
-            CATEGORY);
-
-    public static final KeyMapping OPEN_CONFIG_GUI = new KeyMapping(
-            "key.apricornharvester.config_gui",
+    /**
+     * The addon's only key: everything lives in one tabbed window, so there is nothing else to
+     * bind.
+     */
+    public static final KeyMapping OPEN_GUI = new KeyMapping(
+            "key.apricornharvester.gui",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_G,
             CATEGORY);
@@ -46,11 +37,7 @@ public final class ApricornKeybinds {
 
     /** Registers the mappings and the tick listener that reacts to them. */
     public static void register(IEventBus modEventBus) {
-        modEventBus.addListener(RegisterKeyMappingsEvent.class, event -> {
-            event.register(OPEN_PLANT_GUI);
-            event.register(OPEN_POKEBALL_GUI);
-            event.register(OPEN_CONFIG_GUI);
-        });
+        modEventBus.addListener(RegisterKeyMappingsEvent.class, event -> event.register(OPEN_GUI));
         NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class, event -> onClientTick());
     }
 
@@ -67,31 +54,17 @@ public final class ApricornKeybinds {
         // to Baritone's own processes), so they are driven from here.
         context.tickControllers();
 
-        boolean plantPressed = false;
-        while (OPEN_PLANT_GUI.consumeClick()) {
-            plantPressed = true;
+        boolean pressed = false;
+        while (OPEN_GUI.consumeClick()) {
+            pressed = true;
         }
-        boolean pokeballPressed = false;
-        while (OPEN_POKEBALL_GUI.consumeClick()) {
-            pokeballPressed = true;
-        }
-        boolean configPressed = false;
-        while (OPEN_CONFIG_GUI.consumeClick()) {
-            configPressed = true;
-        }
-        if (!plantPressed && !pokeballPressed && !configPressed) {
+        if (!pressed) {
             return;
         }
         Minecraft mc = Minecraft.getInstance();
         if (mc.screen != null || mc.player == null || context.baritone() == null) {
             return;
         }
-        if (configPressed) {
-            mc.setScreen(new ApricornConfigScreen(context));
-        } else if (plantPressed && context.plant() != null) {
-            mc.setScreen(new ApricornPlantScreen(context.baritone(), context.plant()));
-        } else if (pokeballPressed && context.pokeball() != null) {
-            mc.setScreen(new PokeballScreen(context.pokeball()));
-        }
+        mc.setScreen(new ApricornGui(context));
     }
 }

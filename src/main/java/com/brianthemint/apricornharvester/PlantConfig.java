@@ -15,7 +15,7 @@ import java.util.Map;
  * <p>Rows run along {@link RowAxis#EAST_WEST the X axis} or {@link RowAxis#NORTH_SOUTH the Z axis}
  * and are identified by their coordinate on the other axis, so the same configuration keeps making
  * sense when the selection is re-made over the same farm. Each direction keeps its own row colours.
- * Both the {@code #plant} command and the GUI ({@link ApricornPlantScreen}) read and write this
+ * Both the {@code #plant} command and the window (its Row colours tab) read and write this
  * class; the planting process reads it when a run starts.
  */
 public final class PlantConfig {

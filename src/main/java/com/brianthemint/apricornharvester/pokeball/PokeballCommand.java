@@ -13,7 +13,7 @@ import java.util.stream.Stream;
 
 /**
  * {@code #pokeball} command: the chat side of the Poke Ball factory. Everything here is also in
- * the GUI ({@link PokeballScreen}), which has its own key binding.
+ * the addon window (the Poke Balls tab).
  */
 public class PokeballCommand implements ICommand {
 
@@ -40,7 +40,7 @@ public class PokeballCommand implements ICommand {
                 factory.stop();
                 return;
             case "gui":
-                Minecraft.getInstance().setScreen(new PokeballScreen(factory));
+                com.brianthemint.apricornharvester.ApricornGui.open(com.brianthemint.apricornharvester.ApricornGui.Tab.POKEBALL);
                 return;
             case "status":
                 logDirect("Factory: " + factory.status());

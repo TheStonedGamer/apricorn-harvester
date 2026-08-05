@@ -20,7 +20,7 @@ public class ApricornHelpCommand implements ICommand {
     public void execute(String label, IArgConsumer args) {
         String topic = args.hasAny() ? args.getString().toLowerCase(Locale.ROOT) : "";
         if (topic.equals("gui") || topic.equals("screen")) {
-            Minecraft.getInstance().setScreen(new ApricornHelpScreen());
+            ApricornGui.open(ApricornGui.Tab.HELP);
             return;
         }
         switch (topic) {
@@ -156,10 +156,11 @@ public class ApricornHelpCommand implements ICommand {
     };
 
     static final String[] KEYS = {
-            "Hotkeys (Options > Controls > Apricorn Harvester, rebindable):",
-            "  G   open the settings screen (#config)",
-            "  K   open the planting GUI",
-            "  J   open the Poke Ball factory GUI",
+            "One key opens everything (Options > Controls > Apricorn Harvester):",
+            "  G   open the Apricorn Harvester window",
+            "Tabs: Farms, Harvest, Planting, Row colours, Bone meal, Poke Balls,",
+            "Mine & hunt, Task areas, Help. Each job tab has its own Run/Cancel.",
+            "#config, #plant gui, #pokeball gui and #ah gui all open it on their tab.",
             "Baritone's own #pause / #resume freeze and continue any of these jobs."
     };
 
