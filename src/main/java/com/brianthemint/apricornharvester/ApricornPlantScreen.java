@@ -143,12 +143,17 @@ public class ApricornPlantScreen extends Screen {
         }
 
         int buttonsY = listTop + shown * ROW_HEIGHT + 8;
-        addRenderableWidget(Button.builder(Component.literal("Start planting"), b -> {
-            onClose();
-            process.start();
-        }).bounds(cx - 100, buttonsY, 98, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Stop"), b -> {
+        addRenderableWidget(Button.builder(
+                Component.literal(process.isRunning() ? "Planting..." : "Run"), b -> {
+                    if (process.isRunning()) {
+                        return;
+                    }
+                    onClose();
+                    process.start();
+                }).bounds(cx - 100, buttonsY, 98, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> {
             process.stop();
+            rebuildWidgets();
         }).bounds(cx + 2, buttonsY, 98, 20).build());
         addDoneButtonAt(buttonsY + 24);
     }

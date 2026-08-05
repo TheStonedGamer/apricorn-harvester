@@ -1,7 +1,6 @@
 package com.brianthemint.apricornharvester;
 
-import baritone.api.IBaritone;
-import com.brianthemint.apricornharvester.pokeball.PokeballFactory;
+import baritone.api.utils.Helper;
 import com.brianthemint.apricornharvester.pokeball.PokeballScreen;
 import com.brianthemint.apricornharvester.ui.FlatUI;
 import com.pixelmonmod.pixelmon.enums.items.ApricornType;
@@ -42,21 +41,16 @@ public class ApricornConfigScreen extends Screen {
         }
     }
 
-    private final IBaritone baritone;
-    private final ApricornPlantProcess plantProcess;
-    private final PokeballFactory pokeballFactory;
+    private final AddonContext context;
 
     private Tab tab = Tab.HARVEST;
     private final List<FlatUI.Widget> widgets = new ArrayList<>();
     private final List<FlatUI.Dropdown<?>> dropdowns = new ArrayList<>();
     private final List<EditBox> boxes = new ArrayList<>();
 
-    public ApricornConfigScreen(IBaritone baritone, ApricornPlantProcess plantProcess,
-                                PokeballFactory pokeballFactory) {
+    public ApricornConfigScreen(AddonContext context) {
         super(Component.literal("Apricorn Harvester settings"));
-        this.baritone = baritone;
-        this.plantProcess = plantProcess;
-        this.pokeballFactory = pokeballFactory;
+        this.context = context;
     }
 
     private int left() {
@@ -93,8 +87,79 @@ public class ApricornConfigScreen extends Screen {
             case AREAS -> initAreas(x, y, w);
         }
 
+        addRunButtons();
         widgets.add(new FlatUI.Button(left() + PANEL_W - 76, top() + PANEL_H - 28, 62, 20,
                 () -> "Close", this::onClose, false));
+    }
+
+    /**
+     * The Run/Cancel pair for the tab's job. Run loads the area saved for that task first, so the
+     * button does the whole thing; while the job is running Run turns into a disabled-looking
+     * label and Cancel stops it.
+     */
+    private void addRunButtons() {
+        int x = contentX();
+        int y = top() + PANEL_H - 28;
+        switch (tab) {
+            case HARVEST -> {
+                if (context.harvest() != null) {
+                    runPair(x, y, () -> context.harvest().isActive(),
+                            () -> {
+                                context.applyAreaFor(TaskLocations.Task.HARVEST);
+                                context.harvest().start();
+                            },
+                            () -> context.harvest().stop());
+                }
+            }
+            case PLANT -> {
+                if (context.plant() != null) {
+                    runPair(x, y, () -> context.plant().isRunning(),
+                            () -> {
+                                context.applyAreaFor(TaskLocations.Task.PLANT);
+                                context.plant().start();
+                            },
+                            () -> context.plant().stop());
+                }
+            }
+            case BONEMEAL -> {
+                if (context.bonemeal() != null) {
+                    runPair(x, y, () -> context.bonemeal().isRunning(),
+                            () -> {
+                                context.applyAreaFor(TaskLocations.Task.BONEMEAL);
+                                context.bonemeal().start();
+                            },
+                            () -> context.bonemeal().stop());
+                }
+            }
+            case AREAS -> {
+                // No single job to run here; each row has its own "Go" button instead.
+            }
+        }
+    }
+
+    private void runPair(int x, int y, java.util.function.BooleanSupplier running,
+                         Runnable start, Runnable stop) {
+        widgets.add(new FlatUI.Button(x, y, 74, 20,
+                () -> running.getAsBoolean() ? "Running..." : "Run",
+                () -> {
+                    if (running.getAsBoolean()) {
+                        return;
+                    }
+                    // Only one job at a time: they all steer the same player, and Baritone would
+                    // hand control to whichever process happens to win on priority.
+                    if (context.anyRunning()) {
+                        Helper.HELPER.logDirect("Another job is already running - cancel it first.");
+                        return;
+                    }
+                    this.onClose();
+                    start.run();
+                }, true));
+        widgets.add(new FlatUI.Button(x + 82, y, 74, 20, () -> "Cancel",
+                () -> {
+                    if (running.getAsBoolean()) {
+                        stop.run();
+                    }
+                }, false));
     }
 
     private void initHarvest(int x, int y, int w) {
@@ -121,8 +186,8 @@ public class ApricornConfigScreen extends Screen {
         dropdowns.add(colours);
 
         widgets.add(new FlatUI.Button(x, y + 116, 190, 20, () -> "Per-row colours...", () -> {
-            if (plantProcess != null) {
-                this.minecraft.setScreen(new ApricornPlantScreen(baritone, plantProcess));
+            if (context.plant() != null) {
+                this.minecraft.setScreen(new ApricornPlantScreen(context.baritone(), context.plant()));
             }
         }, false));
     }
@@ -146,13 +211,24 @@ public class ApricornConfigScreen extends Screen {
                     name -> TaskLocations.setSelection(task, "(none)".equals(name) ? "" : name));
             dropdowns.add(areaDropdown);
 
-            EditBox commandBox = new EditBox(this.font, x + 166, rowY + 1, w - 166, 18,
+            EditBox commandBox = new EditBox(this.font, x + 166, rowY + 1, w - 200, 18,
                     Component.literal(task.label() + " command"));
             commandBox.setValue(TaskLocations.getCommand(task));
             commandBox.setMaxLength(64);
             commandBox.setResponder(value -> TaskLocations.setCommand(task, value));
             addWidget(commandBox);
             boxes.add(commandBox);
+
+            // Travel there and load the area, the same as "#loc <task> go".
+            widgets.add(new FlatUI.Button(x + w - 30, rowY + 1, 30, 18, () -> "Go", () -> {
+                boolean travelled = TaskLocations.sendTravel(task);
+                boolean applied = TaskLocations.applySelection(context.baritone(), task);
+                if (!travelled && !applied) {
+                    Helper.HELPER.logDirect(task.label() + " has no travel command and no area set.");
+                } else {
+                    this.onClose();
+                }
+            }, false));
 
             rowY += 26;
         }
@@ -303,8 +379,8 @@ public class ApricornConfigScreen extends Screen {
 
     /** Opens the Poke Ball factory screen; kept here so the key binding has one entry point. */
     public void openPokeballScreen() {
-        if (pokeballFactory != null) {
-            this.minecraft.setScreen(new PokeballScreen(pokeballFactory));
+        if (context.pokeball() != null) {
+            this.minecraft.setScreen(new PokeballScreen(context.pokeball()));
         }
     }
 }

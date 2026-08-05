@@ -1,7 +1,5 @@
 package com.brianthemint.apricornharvester;
 
-import baritone.api.IBaritone;
-import com.brianthemint.apricornharvester.pokeball.PokeballFactory;
 import com.brianthemint.apricornharvester.pokeball.PokeballScreen;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
@@ -41,9 +39,7 @@ public final class ApricornKeybinds {
             GLFW.GLFW_KEY_G,
             CATEGORY);
 
-    private static IBaritone baritone;
-    private static ApricornPlantProcess plantProcess;
-    private static PokeballFactory pokeballFactory;
+    private static AddonContext context;
 
     private ApricornKeybinds() {
     }
@@ -59,18 +55,18 @@ public final class ApricornKeybinds {
     }
 
     /** Called once Baritone is available, so the GUIs have something to work against. */
-    public static void setContext(IBaritone baritone, ApricornPlantProcess plantProcess,
-                                  PokeballFactory pokeballFactory) {
-        ApricornKeybinds.baritone = baritone;
-        ApricornKeybinds.plantProcess = plantProcess;
-        ApricornKeybinds.pokeballFactory = pokeballFactory;
+    public static void setContext(AddonContext context) {
+        ApricornKeybinds.context = context;
     }
 
     private static void onClientTick() {
+        if (context == null) {
+            return;
+        }
         // The Poke Ball factory is a plain tick controller (it hands control to Baritone's miner
         // for the mining steps), so it is driven from here rather than from a Baritone process.
-        if (pokeballFactory != null) {
-            pokeballFactory.tick();
+        if (context.pokeball() != null) {
+            context.pokeball().tick();
         }
 
         boolean plantPressed = false;
@@ -89,15 +85,15 @@ public final class ApricornKeybinds {
             return;
         }
         Minecraft mc = Minecraft.getInstance();
-        if (mc.screen != null || mc.player == null || baritone == null) {
+        if (mc.screen != null || mc.player == null || context.baritone() == null) {
             return;
         }
         if (configPressed) {
-            mc.setScreen(new ApricornConfigScreen(baritone, plantProcess, pokeballFactory));
-        } else if (plantPressed && plantProcess != null) {
-            mc.setScreen(new ApricornPlantScreen(baritone, plantProcess));
-        } else if (pokeballPressed && pokeballFactory != null) {
-            mc.setScreen(new PokeballScreen(pokeballFactory));
+            mc.setScreen(new ApricornConfigScreen(context));
+        } else if (plantPressed && context.plant() != null) {
+            mc.setScreen(new ApricornPlantScreen(context.baritone(), context.plant()));
+        } else if (pokeballPressed && context.pokeball() != null) {
+            mc.setScreen(new PokeballScreen(context.pokeball()));
         }
     }
 }

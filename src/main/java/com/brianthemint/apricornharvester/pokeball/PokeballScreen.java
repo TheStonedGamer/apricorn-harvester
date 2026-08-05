@@ -137,18 +137,23 @@ public class PokeballScreen extends Screen {
         addWidget(farmCommandBox);
 
         int buttonY = top() + PANEL_H - 30;
-        buttons.add(new FlatUI.Button(x, buttonY, 100, 20,
-                () -> factory.isRunning() ? "Stop" : "Start",
+        buttons.add(new FlatUI.Button(x, buttonY, 74, 20,
+                () -> factory.isRunning() ? "Running..." : "Run",
                 () -> {
-                    if (factory.isRunning()) {
-                        factory.stop();
-                    } else {
+                    if (!factory.isRunning()) {
+                        onClose();
                         factory.start();
                     }
                 }, true));
-        buttons.add(new FlatUI.Button(x + 108, buttonY, 100, 20, () -> "Refresh plan",
+        buttons.add(new FlatUI.Button(x + 82, buttonY, 74, 20, () -> "Cancel",
+                () -> {
+                    if (factory.isRunning()) {
+                        factory.stop();
+                    }
+                }, false));
+        buttons.add(new FlatUI.Button(x + 164, buttonY, 74, 20, () -> "Plan",
                 this::refreshPreview, false));
-        buttons.add(new FlatUI.Button(left() + PANEL_W - 16 - 80, buttonY, 80, 20, () -> "Close",
+        buttons.add(new FlatUI.Button(left() + PANEL_W - 16 - 56, buttonY, 56, 20, () -> "Close",
                 this::onClose, false));
 
         refreshPreview();

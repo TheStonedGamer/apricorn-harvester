@@ -1,9 +1,7 @@
 package com.brianthemint.apricornharvester;
 
-import baritone.api.IBaritone;
 import baritone.api.command.ICommand;
 import baritone.api.command.argument.IArgConsumer;
-import com.brianthemint.apricornharvester.pokeball.PokeballFactory;
 import net.minecraft.client.Minecraft;
 
 import java.util.List;
@@ -15,21 +13,15 @@ import java.util.stream.Stream;
  */
 public class ApricornConfigCommand implements ICommand {
 
-    private final IBaritone baritone;
-    private final ApricornPlantProcess plantProcess;
-    private final PokeballFactory pokeballFactory;
+    private final AddonContext context;
 
-    public ApricornConfigCommand(IBaritone baritone, ApricornPlantProcess plantProcess,
-                                 PokeballFactory pokeballFactory) {
-        this.baritone = baritone;
-        this.plantProcess = plantProcess;
-        this.pokeballFactory = pokeballFactory;
+    public ApricornConfigCommand(AddonContext context) {
+        this.context = context;
     }
 
     @Override
     public void execute(String label, IArgConsumer args) {
-        Minecraft.getInstance().setScreen(
-                new ApricornConfigScreen(baritone, plantProcess, pokeballFactory));
+        Minecraft.getInstance().setScreen(new ApricornConfigScreen(context));
     }
 
     @Override
