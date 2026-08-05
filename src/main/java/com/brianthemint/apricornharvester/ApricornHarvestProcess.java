@@ -221,6 +221,17 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
     private BlockPos depositChestPos;
     /** Ticks spent in the current deposit sub-phase. */
     private int depositTicks;
+    /**
+     * True when this deposit is an emergency trip in the middle of the harvest (the inventory
+     * filled up) rather than the final one. The run continues afterwards instead of finishing.
+     */
+    private boolean midRunDeposit;
+    /**
+     * Set when a deposit trip failed in a way that will keep failing - no container in range, none
+     * reachable, or one that had no room. Stops the bot shuttling to the same dead end every time
+     * the inventory fills for the rest of the run.
+     */
+    private boolean depositUnavailable;
 
     private boolean harvestedAtThisStop;
     private int noProgressTicks;
@@ -331,6 +342,8 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
         this.depositPhase = DepositPhase.IDLE;
         this.depositChestPos = null;
         this.depositTicks = 0;
+        this.midRunDeposit = false;
+        this.depositUnavailable = false;
         // The bot must never break apricorn leaves/logs: disable breaking for the whole run
         // (settings are read live by the pathfinder, so every path respects it).
         this.previousAllowBreak = BaritoneAPI.getSettings().allowBreak.value;
@@ -479,6 +492,19 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
             if (!clickQueue.isEmpty()) {
                 return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
             }
+        }
+
+        // A full inventory means every apricorn from here on would be left lying on the ground, so
+        // break off and empty out before carrying on with the sweep.
+        if (depositEnabled && !depositUnavailable && !patrolDone
+                && depositPhase == DepositPhase.IDLE && emptyInventorySlots() == 0
+                && ApricornBlocks.hasApricorns(ctx.player().getInventory())) {
+            midRunDeposit = true;
+            depositPhase = DepositPhase.SCAN;
+            depositChestPos = null;
+            depositTicks = 0;
+            currentGoalStand = null;
+            logDirect("Inventory full - going to empty it into a container.");
         }
 
         if (depositPhase != DepositPhase.IDLE && depositPhase != DepositPhase.DONE) {
@@ -1076,10 +1102,8 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
 
                 if (bestPos == null) {
                     logDirect("No container with free space within " + scanRange
-                            + " blocks. Skipping deposit (raise it with #apricorn chestradius <n>).");
-                    depositPhase = DepositPhase.DONE;
-                    finish("Apricorn harvesting complete (no deposit target).");
-                    return null;
+                            + " blocks (raise it with #apricorn chestradius <n>).");
+                    return endDeposit("Apricorn harvesting complete (no deposit target).", true);
                 }
 
                 depositChestPos = bestPos;
@@ -1108,10 +1132,8 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                 }
                 trackGoal(stand);
                 if (goalUnreachable(stand) || stuck(stand)) {
-                    logDirect("Cannot reach container at " + depositChestPos + ", skipping deposit.");
-                    depositPhase = DepositPhase.DONE;
-                    finish("Apricorn harvesting complete (could not reach container).");
-                    return null;
+                    logDirect("Cannot reach container at " + depositChestPos + ".");
+                    return endDeposit("Apricorn harvesting complete (could not reach container).", true);
                 }
                 return new PathingCommand(new GoalBlock(stand), PathingCommandType.SET_GOAL_AND_PATH);
             }
@@ -1141,10 +1163,8 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                     return tickDeposit(false);
                 }
                 if (depositTicks > 20) {
-                    logDirect("Container at " + depositChestPos + " did not open, skipping deposit.");
-                    depositPhase = DepositPhase.DONE;
-                    finish("Apricorn harvesting complete (could not open container).");
-                    return null;
+                    logDirect("Container at " + depositChestPos + " did not open.");
+                    return endDeposit("Apricorn harvesting complete (could not open container).", true);
                 }
                 return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
             }
@@ -1188,18 +1208,59 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
             case CLOSE: {
                 Minecraft.getInstance().screen = null; // force-close on client
                 ctx.player().closeContainer();
-                depositPhase = DepositPhase.DONE;
                 String msg = "Apricorns deposited.";
-                if (ApricornBlocks.hasApricorns(ctx.player().getInventory())) {
-                    msg = "Could not deposit all apricorns (inventory may be full?).";
+                // Still full after a deposit means the container took nothing useful; stop trying
+                // mid-run rather than shuttling back and forth for the rest of the harvest.
+                boolean stillFull = emptyInventorySlots() == 0;
+                if (ApricornBlocks.hasApricorns(ctx.player().getInventory()) && stillFull) {
+                    msg = "Could not deposit all apricorns (container full?).";
                 }
-                finish("Apricorn harvesting complete. " + msg);
-                return null;
+                return endDeposit("Apricorn harvesting complete. " + msg, stillFull);
             }
             default:
                 return null;
         }
         return null;
+    }
+
+    /**
+     * Ends a deposit trip. A mid-run trip hands control back to the sweep so the harvest carries
+     * on where it left off; the final one finishes the run.
+     *
+     * @param finalMessage what to say if this was the run's last act
+     * @param failed       true when the trip hit something that will keep failing, so no further
+     *                     mid-run trips are attempted
+     */
+    private PathingCommand endDeposit(String finalMessage, boolean failed) {
+        depositPhase = DepositPhase.IDLE;
+        depositChestPos = null;
+        depositTicks = 0;
+        currentGoalStand = null;
+        if (failed) {
+            depositUnavailable = true;
+        }
+        if (midRunDeposit) {
+            midRunDeposit = false;
+            logDirect(failed
+                    ? "Carrying on without depositing - drops that do not fit will be left."
+                    : "Emptied out, back to harvesting.");
+            return null;
+        }
+        depositPhase = DepositPhase.DONE;
+        finish(finalMessage);
+        return null;
+    }
+
+    /** Free slots in the player's main inventory and hotbar. */
+    private int emptyInventorySlots() {
+        net.minecraft.world.entity.player.Inventory inv = ctx.player().getInventory();
+        int empty = 0;
+        for (int i = 0; i < inv.items.size(); i++) {
+            if (inv.getItem(i).isEmpty()) {
+                empty++;
+            }
+        }
+        return empty;
     }
 
     /**
