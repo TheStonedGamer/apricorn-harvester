@@ -264,7 +264,8 @@ public class ApricornBonemealProcess implements IBaritoneProcess {
             return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
         if (ctx.player() == null || ctx.world() == null) {
-            return null;
+            // Still active, and Baritone throws when an active process returns no command.
+            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
         if (wanderedOff()) {
             finish("Wandered too far from the selection - bone-mealing stopped.");
@@ -355,7 +356,8 @@ public class ApricornBonemealProcess implements IBaritoneProcess {
                     continue;
                 }
                 default:
-                    return null;
+                    // Unreachable, but an active process must never return no command.
+                    return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
             }
         }
     }

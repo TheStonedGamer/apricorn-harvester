@@ -471,7 +471,8 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
             return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
         if (ctx.player() == null || ctx.world() == null) {
-            return null;
+            // Mid-disconnect: still active, so hold rather than returning no command at all.
+            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
         if (wanderedOff()) {
             finish("Wandered too far from the selection - harvest stopped. (Check the selection"
@@ -1218,9 +1219,10 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
                 return endDeposit("Apricorn harvesting complete. " + msg, stillFull);
             }
             default:
-                return null;
+                break;
         }
-        return null;
+        // Whatever happened, the run is still active here, so hold rather than returning nothing.
+        return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
     }
 
     /**
@@ -1244,7 +1246,10 @@ public class ApricornHarvestProcess implements IBaritoneProcess {
             logDirect(failed
                     ? "Carrying on without depositing - drops that do not fit will be left."
                     : "Emptied out, back to harvesting.");
-            return null;
+            // NOT null: the run is still active, and Baritone throws IllegalStateException when an
+            // active process returns no command. Hold still for this tick; the sweep resumes on the
+            // next one.
+            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
         depositPhase = DepositPhase.DONE;
         finish(finalMessage);
