@@ -22,14 +22,17 @@ public final class AddonContext {
     private final ApricornHunter hunter;
     private final FarmMapper mapper;
     private final DepositController deposit;
+    private final ToolRepairController repairer;
     private ScheduleRunner schedule;
 
     public AddonContext(IBaritone baritone, ApricornHarvestProcess harvest,
                         ApricornPlantProcess plant, ApricornBonemealProcess bonemeal,
                         PokeballFactory pokeball, OreMineController ore, ApricornHunter hunter,
-                        FarmMapper mapper, DepositController deposit) {
+                        FarmMapper mapper, DepositController deposit,
+                        ToolRepairController repairer) {
         this.mapper = mapper;
         this.deposit = deposit;
+        this.repairer = repairer;
         this.baritone = baritone;
         this.harvest = harvest;
         this.plant = plant;
@@ -53,6 +56,10 @@ public final class AddonContext {
 
     public DepositController deposit() {
         return deposit;
+    }
+
+    public ToolRepairController repairer() {
+        return repairer;
     }
 
     public ScheduleRunner schedule() {
@@ -80,6 +87,9 @@ public final class AddonContext {
         }
         if (deposit != null) {
             deposit.tick();
+        }
+        if (repairer != null) {
+            repairer.tick();
         }
         // Last: the schedule only starts the next module once the others report themselves idle.
         if (schedule != null) {
@@ -138,6 +148,7 @@ public final class AddonContext {
                 || (ore != null && ore.isRunning())
                 || (hunter != null && hunter.isRunning())
                 || (mapper != null && mapper.isRunning())
-                || (deposit != null && deposit.isRunning());
+                || (deposit != null && deposit.isRunning())
+                || (repairer != null && repairer.isRunning());
     }
 }

@@ -255,6 +255,13 @@ public final class PokeballRecipes {
         private final List<CraftPlan.Step> steps = new ArrayList<>();
         private final List<String> missing = new ArrayList<>();
         private final Set<Item> inProgress = new HashSet<>();
+        /**
+         * The exact stack wanted for an item, where that matters. Every apricorn lid is the same
+         * item - {@code pixelmon:poke_ball_lid} - and only its data component says which ball it
+         * belongs to, so planning by item alone can pick another ball's lid recipe and quietly
+         * skip the apricorns this one needs.
+         */
+        private final Map<Item, ItemStack> wanted = new HashMap<>();
 
         Resolver(Map<Item, Integer> inventory) {
             this.virtual = new LinkedHashMap<>(inventory);
@@ -271,7 +278,8 @@ public final class PokeballRecipes {
             virtual.put(item, 0);
 
             if (depth > MAX_DEPTH || !inProgress.add(item)) {
-                missing.add(nameOf(item) + " x" + deficit);
+                missing.add(nameOf(item) + " x" + deficit
+                        + (depth > MAX_DEPTH ? " (recipe tree too deep)" : " (recipes loop)"));
                 return false;
             }
             try {
@@ -279,7 +287,20 @@ public final class PokeballRecipes {
                         || produceByHarvesting(item, deficit) || produceByMining(item, deficit)) {
                     return true;
                 }
-                missing.add(nameOf(item) + " x" + deficit);
+                // Say what was tried: "no recipe at all" and "the recipe needs something else" are
+                // very different problems to fix.
+                int crafts = craftingRecipesFor(item, wanted.get(item)).size();
+                String why;
+                if (crafts > 0) {
+                    why = " (" + crafts + " recipe(s), but their ingredients cannot be got)";
+                } else if (smeltingRecipeFor(item) != null) {
+                    why = " (smelting it needs something that cannot be got)";
+                } else if (!mineBlocksFor(item).isEmpty()) {
+                    why = " (would have to be mined)";
+                } else {
+                    why = " (no recipe, no furnace recipe and no block to mine)";
+                }
+                missing.add(nameOf(item) + " x" + deficit + why);
                 return false;
             } finally {
                 inProgress.remove(item);
@@ -287,7 +308,7 @@ public final class PokeballRecipes {
         }
 
         private boolean produceByCrafting(Item item, int deficit, int depth) {
-            for (RecipeHolder<?> holder : craftingRecipesFor(item)) {
+            for (RecipeHolder<?> holder : craftingRecipesFor(item, wanted.get(item))) {
                 // Skip recipes that just undo another one - slabs back into their block, ingots
                 // back out of a storage block. They look cheap (one ingredient) so the planner
                 // would pick them, and then plan to craft the very thing it is trying to make.
@@ -330,6 +351,14 @@ public final class PokeballRecipes {
             Map<Item, Integer> perCraft = ingredientCounts(holder, virtual);
             if (perCraft == null) {
                 return false;
+            }
+            // Remember any ingredient that is picked out by its components, so resolving it later
+            // uses the recipe that makes that exact variant.
+            for (Ingredient ingredient : holder.value().getIngredients()) {
+                ItemStack[] options = ingredient.getItems();
+                if (options.length > 0 && !options[0].getComponents().isEmpty()) {
+                    wanted.put(options[0].getItem(), options[0]);
+                }
             }
             for (Map.Entry<Item, Integer> entry : perCraft.entrySet()) {
                 if (!ensure(entry.getKey(), entry.getValue() * crafts, depth + 1)) {
@@ -400,8 +429,19 @@ public final class PokeballRecipes {
         return false;
     }
 
-    /** All crafting recipes whose result is the given item, simplest (fewest ingredients) first. */
     private static List<RecipeHolder<?>> craftingRecipesFor(Item item) {
+        return craftingRecipesFor(item, null);
+    }
+
+    /**
+     * All crafting recipes whose result is the given item, simplest (fewest ingredients) first.
+     *
+     * <p>When {@code exact} is given, only recipes producing that exact stack count - same item and
+     * same data components. Pixelmon's lids are all one item and differ only by the ball id they
+     * carry, so without this the planner happily picks a Great Ball lid recipe when a Dusk Ball lid
+     * was asked for, and the apricorns the run actually needs never appear in the plan.
+     */
+    private static List<RecipeHolder<?>> craftingRecipesFor(Item item, ItemStack exact) {
         RecipeManager manager = recipeManager();
         List<RecipeHolder<?>> out = new ArrayList<>();
         if (manager == null) {
@@ -412,9 +452,13 @@ public final class PokeballRecipes {
                 continue;
             }
             ItemStack result = resultOf(holder);
-            if (!result.isEmpty() && result.getItem() == item) {
-                out.add(holder);
+            if (result.isEmpty() || result.getItem() != item) {
+                continue;
             }
+            if (exact != null && !ItemStack.isSameItemSameComponents(result, exact)) {
+                continue;
+            }
+            out.add(holder);
         }
         out.sort(Comparator.comparingInt(h -> h.value().getIngredients().size()));
         return out;

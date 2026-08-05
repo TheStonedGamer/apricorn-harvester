@@ -56,6 +56,7 @@ public class ApricornGui extends Screen {
         BONEMEAL("Bone meal"),
         POKEBALL("Poke Balls"),
         MINE("Mine & hunt"),
+        TOOLS("Tools"),
         AREAS("Task areas"),
         HELP("Help");
 
@@ -172,6 +173,7 @@ public class ApricornGui extends Screen {
             case BONEMEAL -> initBonemeal(x, y, w);
             case POKEBALL -> initPokeball(x, y, w);
             case MINE -> initMineHunt(x, y, w);
+            case TOOLS -> initTools(x, y, w);
             case AREAS -> initAreas(x, y, w);
             case HELP -> initHelp(x, y, w);
         }
@@ -716,6 +718,47 @@ public class ApricornGui extends Screen {
         }, false));
     }
 
+    // -- tools
+
+    /** Which tools to keep, what to make them of, how worn they may get, and repair vs replace. */
+    private void initTools(int x, int y, int w) {
+        ToolConfig.ToolKind[] kinds = ToolConfig.ToolKind.values();
+        int buttonW = (w - 12) / 4;
+        for (int i = 0; i < kinds.length; i++) {
+            ToolConfig.ToolKind kind = kinds[i];
+            widgets.add(new FlatUI.Button(x + i * (buttonW + 4), y, buttonW, 18, kind::label,
+                    () -> {
+                        ToolConfig.setKept(kind, !ToolConfig.isKept(kind));
+                        rebuildWidgets();
+                    }, ToolConfig.isKept(kind)));
+        }
+
+        dropdowns.add(new FlatUI.Dropdown<>(x + w - 150, y + 30, 150,
+                Arrays.asList(ToolConfig.Material.values()), ToolConfig.getPreferred(),
+                ToolConfig.Material::label, ToolConfig::setPreferred));
+        widgets.add(new FlatUI.Stepper(x + w - 96, y + 58, 96, ToolConfig::getWornPercent,
+                ToolConfig::setWornPercent, "%"));
+        widgets.add(new FlatUI.Stepper(x + w - 96, y + 84, 96, ToolConfig::getSpares,
+                ToolConfig::setSpares, "spare"));
+        widgets.add(new FlatUI.Toggle(x + w - 34, y + 110, ToolConfig::isRepairByCombining,
+                ToolConfig::setRepairByCombining));
+
+        widgets.add(new FlatUI.Button(x, buttonRowY(), 110, 20,
+                () -> context.repairer() != null && context.repairer().isRunning()
+                        ? "Working..." : "Check tools now",
+                () -> {
+                    onClose();
+                    if (!ToolUpkeep.ensureTools(context.pokeball(), context.repairer())) {
+                        Helper.HELPER.logDirect("Tools are fine: " + ToolUpkeep.summary());
+                    }
+                }, true));
+        widgets.add(new FlatUI.Button(x + 118, buttonRowY(), 74, 20, () -> "Cancel", () -> {
+            if (context.repairer() != null && context.repairer().isRunning()) {
+                context.repairer().stop();
+            }
+        }, false));
+    }
+
     // -- task areas
 
     private void initAreas(int x, int y, int w) {
@@ -1118,6 +1161,19 @@ public class ApricornGui extends Screen {
                 FlatUI.label(g, "Hunt hops", x, y + 106);
                 note(g, x, y + 154, "The hunt looks for apricorn colours you have none of, hopping",
                         "with the hunt command until it finds one, then paths to it.");
+            }
+            case TOOLS -> {
+                FlatUI.label(g, "Tools to keep in working order", x, y - 10);
+                FlatUI.label(g, "Make them of", x, y + 36);
+                FlatUI.label(g, "Worn out below", x, y + 62);
+                FlatUI.label(g, "Keep this many spare", x, y + 88);
+                FlatUI.label(g, "Combine two worn ones before making a new one", x, y + 114);
+                g.drawString(this.font, fit(ToolUpkeep.summary(), w), x, y + 140,
+                        ToolUpkeep.needsAttention() ? FlatUI.BAD : FlatUI.OK, false);
+                note(g, x, y + 160,
+                        "During a schedule the tools are checked between modules, so a run",
+                        "never carries on with a pickaxe that is about to break. Making one",
+                        "mines and smelts whatever it takes.");
             }
             case AREAS -> {
                 FlatUI.label(g, "Task", x, y - 10);

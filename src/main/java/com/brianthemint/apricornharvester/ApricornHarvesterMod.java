@@ -58,9 +58,10 @@ public final class ApricornHarvesterMod {
             ApricornHunter hunter = new ApricornHunter(baritone);
             FarmMapper mapper = new FarmMapper(baritone);
             DepositController depositController = new DepositController(baritone);
+            ToolRepairController repairController = new ToolRepairController(baritone);
             AddonContext context = new AddonContext(baritone, process, plantProcess,
                     bonemealProcess, pokeballFactory, oreController, hunter, mapper,
-                    depositController);
+                    depositController, repairController);
             context.setSchedule(new com.brianthemint.apricornharvester.schedule.ScheduleRunner(context));
             // Bring back the farm that was selected last session, if it still exists.
             FarmSelection.restore();

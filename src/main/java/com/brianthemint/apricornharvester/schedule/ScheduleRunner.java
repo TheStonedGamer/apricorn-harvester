@@ -35,6 +35,8 @@ public final class ScheduleRunner {
     private int index;
     private int ticks;
     private boolean stepStarted;
+    /** True while a tool detour runs in place of the step that is next. */
+    private boolean fixingTools;
     private int laps;
 
     public ScheduleRunner(AddonContext context) {
@@ -82,6 +84,7 @@ public final class ScheduleRunner {
         ticks = 0;
         laps = 0;
         stepStarted = false;
+        fixingTools = false;
         running = true;
         StringBuilder plan = new StringBuilder();
         for (ScheduleStep step : steps) {
@@ -130,6 +133,17 @@ public final class ScheduleRunner {
             if (ticks < STEP_GAP) {
                 return;
             }
+            // Tools first, whatever is next on the list: a run that carries on with a broken
+            // pickaxe just fails slowly. Only between modules, so nothing is interrupted.
+            if (step != ScheduleStep.TOOLS && Schedule.isEnabled(ScheduleStep.TOOLS)
+                    && ToolUpkeep.needsAttention()
+                    && ToolUpkeep.ensureTools(context.pokeball(), context.repairer())) {
+                logDirect("Schedule: tools need attention first.");
+                stepStarted = true;
+                fixingTools = true;
+                ticks = 0;
+                return;
+            }
             logDirect("Schedule: " + step.label() + "...");
             startStep(step);
             stepStarted = true;
@@ -138,6 +152,15 @@ public final class ScheduleRunner {
         }
 
         ticks++;
+        if (fixingTools) {
+            // The tool detour finished: start the step that was actually next.
+            if (!isStepRunning(ScheduleStep.TOOLS)) {
+                fixingTools = false;
+                stepStarted = false;
+                ticks = 0;
+            }
+            return;
+        }
         if (isStepRunning(step)) {
             if (ticks > STEP_TIMEOUT) {
                 logDirect("Schedule: " + step.label() + " ran too long - moving on.");
@@ -156,6 +179,7 @@ public final class ScheduleRunner {
     private void nextStep() {
         index++;
         stepStarted = false;
+        fixingTools = false;
         ticks = 0;
     }
 
@@ -206,7 +230,7 @@ public final class ScheduleRunner {
                     context.deposit().start();
                 }
             }
-            case TOOLS -> ToolUpkeep.ensurePickaxe(context.pokeball());
+            case TOOLS -> ToolUpkeep.ensureTools(context.pokeball(), context.repairer());
         }
     }
 
@@ -219,8 +243,9 @@ public final class ScheduleRunner {
             case HUNT -> context.hunter() != null && context.hunter().isRunning();
             case POKEBALL -> context.pokeball() != null && context.pokeball().isRunning();
             case DEPOSIT -> context.deposit() != null && context.deposit().isRunning();
-            // Tool upkeep is carried out by the crafting factory, so that is what to watch.
-            case TOOLS -> context.pokeball() != null && context.pokeball().isRunning();
+            // Tool upkeep is carried out by the crafting factory or the repair controller.
+            case TOOLS -> (context.pokeball() != null && context.pokeball().isRunning())
+                    || (context.repairer() != null && context.repairer().isRunning());
         };
     }
 
